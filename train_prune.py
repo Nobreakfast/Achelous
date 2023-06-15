@@ -25,7 +25,7 @@ from utils_seg_line.callbacks import LossHistory as LossHistory_seg_line
 from utils_seg_pc.callbacks import LossHistory as LossHistory_seg_pc
 from utils_seg_pc.callbacks import EvalCallback as EvalCallback_seg_pc
 import argparse
-
+import torch_pruning as tp
 
 if __name__ == "__main__":
     # =========== 参数解析实例 =========== #
@@ -54,6 +54,8 @@ if __name__ == "__main__":
     parser.add_argument("--spp", type=str, default='True')
     parser.add_argument("--data_root", type=str, default='/home/dalianmao/WaterScenes_new')
     parser.add_argument("--local_rank", default=-1, type=int, help='node rank for distributed training')
+    parser.add_argument("--pth", default='', type=str, help='pretrained model path')
+    parser.add_argument("--pm", default=0, type=float, help='pruning amount')
 
     args = parser.parse_args()
 
@@ -81,7 +83,7 @@ if __name__ == "__main__":
     #                   训练前一定要修改classes_path，使其对应自己的数据集
     # ---------------------------------------------------------------------#
     classes_path = 'model_data/waterscenes_benchmark.txt'
-    model_path = ''
+    model_path = args.pth
 
     # ------------------------------------------------------#
     #   backbone (4 options): ef (EfficientFormer), en (EdgeNeXt), ev (EdgeViT), mv (MobileViT)
@@ -340,7 +342,8 @@ if __name__ == "__main__":
         model = Achelous3T(resolution=input_shape[0], num_det=num_classes, num_seg=num_classes_seg, phi=phi,
                            backbone=backbone, neck=neck, spp=spp,
                            nano_head=lightweight).cuda(local_rank)
-    weights_init(model)
+
+
     if model_path != '':
         # ------------------------------------------------------#
         #   权值文件请看README，百度网盘下载
@@ -369,6 +372,17 @@ if __name__ == "__main__":
             print("\nSuccessful Load Key:", str(load_key)[:500], "……\nSuccessful Load Key Num:", len(load_key))
             print("\nFail To Load Key:", str(no_load_key)[:500], "……\nFail To Load Key num:", len(no_load_key))
             print("\n\033[1;33;44m温馨提示，head部分没有载入是正常现象，Backbone部分没有载入是错误的。\033[0m")
+
+    # ------------------------------------------------------#
+    #   Pruning
+    # ------------------------------------------------------#
+    if args.pm != 0:
+        pass
+
+
+
+
+
 
     # ----------------------#
     #   获得损失函数

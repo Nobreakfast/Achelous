@@ -13,7 +13,7 @@ from backbone.IREncoder import IREncoder
 from backbone.attention_modules.shuffle_attention import *
 from head.decouplehead import DecoupleHead
 from nets.pointcloudseg.pointnet2.pointnet_sem_seg import PointNet_SEG
-from feature_augment.vrja_network import VRJA_VAE
+from feature_augment.vrja_network import VAE as VRJA_VAE
 
 
 image_encoder_width = {
@@ -60,7 +60,7 @@ class Achelous(nn.Module):
 
 
 class Achelous3T(nn.Module):
-    def __init__(self, num_det, num_seg, phi='SO', image_channels=3, radar_channels=3, resolution=320,
+    def __init__(self, num_det, num_seg, phi='S0', image_channels=3, radar_channels=3, resolution=320,
                  backbone='en', neck='gdf', pc_seg='pn', pc_channels=6, pc_classes=9, nano_head=True, spp=True):
         super(Achelous3T, self).__init__()
 

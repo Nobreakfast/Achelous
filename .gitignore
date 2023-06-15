@@ -1,7 +1,9 @@
 2007*.txt
 logs*/
 exp*
-.temp_map_out*/
+.temp_miou_out/
+.temp_map_out/
+.test/
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 
