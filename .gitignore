@@ -3,7 +3,7 @@ logs*/
 exp*
 .temp_miou_out/
 .temp_map_out/
-.test/
+test/
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 

@@ -26,6 +26,7 @@ from utils_seg_pc.callbacks import LossHistory as LossHistory_seg_pc
 from utils_seg_pc.callbacks import EvalCallback as EvalCallback_seg_pc
 import argparse
 import torch_pruning as tp
+import pruner.utils as pruner_utils
 
 if __name__ == "__main__":
     # =========== 参数解析实例 =========== #
@@ -56,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--local_rank", default=-1, type=int, help='node rank for distributed training')
     parser.add_argument("--pth", default='', type=str, help='pretrained model path')
     parser.add_argument("--pm", default=0, type=float, help='pruning amount')
+    parser.add_argument("--log_dir", default='plogs/01', type=str, help='log dir')
 
     args = parser.parse_args()
 
@@ -200,7 +202,7 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------#
     #   save_dir        权值与日志文件保存的文件夹
     # ------------------------------------------------------------------#
-    save_dir = 'logs'
+    save_dir = args.log_dir + '/logs'
     # ------------------------------------------------------------------#
     #   eval_flag       是否在训练时进行评估，评估对象为验证集
     #                   安装pycocotools库后，评估体验更佳。
@@ -303,9 +305,9 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------#
     #   save_dir_seg        分割权值与日志文件保存的文件夹
     # ------------------------------------------------------------------#
-    save_dir_seg = 'logs_seg'
-    save_dir_seg_wl = 'logs_seg_line'
-    save_dir_seg_pc = 'logs_seg_pc'
+    save_dir_seg = args.log_dir + '/logs_seg'
+    save_dir_seg_wl = args.log_dir + '/logs_seg_line'
+    save_dir_seg_pc = args.log_dir + '/logs_seg_pc'
 
     # ======================================================================================= #
 
@@ -376,13 +378,12 @@ if __name__ == "__main__":
     # ------------------------------------------------------#
     #   Pruning
     # ------------------------------------------------------#
+    model.to(torch.device("cpu"))
     if args.pm != 0:
-        pass
+        sparsity_dict = pruner_utils.get_sparsity(model, args.pm)
+        pruner_utils.prune_model(model, sparsity_dict)
 
-
-
-
-
+    model.to(device)
 
     # ----------------------#
     #   获得损失函数
