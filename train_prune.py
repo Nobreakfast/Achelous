@@ -378,74 +378,10 @@ if __name__ == "__main__":
     # ------------------------------------------------------#
     #   Pruning
     # ------------------------------------------------------#
-    from backbone.attention_modules.shuffle_attention import ShuffleAttention
-    from typing import Sequence
-
-    class ShuffleAttnPruner(tp.pruner.BasePruningFunc):
-        def prune_out_channels(self, layer: ShuffleAttention, idxs: Sequence[int]) -> nn.Module: 
-            # keep_idxs = list(set(range(layer.in_dim)) - set(idxs))
-            # keep_idxs.sort()
-            # layer.in_dim = layer.in_dim-len(idxs)
-            # layer.scale = torch.nn.Parameter(layer.scale.data.clone()[keep_idxs])
-            # layer.bias = torch.nn.Parameter(layer.bias.data.clone()[keep_idxs])
-            # tp.prune_linear_in_channels(layer.fc, idxs)
-            # tp.prune_linear_out_channels(layer.fc, idxs)
-            return layer
-
-        def get_out_channels(self):
-            return 0
-            # return self.in_dim
-        
-        # identical functions
-        prune_in_channels = prune_out_channels
-        get_in_channels = get_out_channels
-
-    def get_sparsity(model, amount):
-        """
-        Get the sparsity dict for a model.
-        """
-        sparsity_dict = {}
-        sum = 0.0
-        for k, m in model.named_modules():
-            if isinstance(m, nn.Conv2d):
-                # print("Conv2d layer", k)
-                in_ch = m.in_channels
-                out_ch = m.out_channels
-                strides = m.stride
-                featio = out_ch/strides[0]/strides[1]/in_ch/(torch.sum(m.weight.data).item()+1e-8)
-            elif isinstance(m, nn.Linear):
-                # print("Linear layer", k)
-                in_ch = m.in_features
-                out_ch = m.out_features
-                featio = out_ch/in_ch/(torch.sum(m.weight.data).item()+1e-8)
-            else: 
-                continue
-            sparsity_dict[k] = 1/featio
-            sum += sparsity_dict[k]
-        for k in sparsity_dict.keys():
-            sparsity_dict[k] = amount*(1-sparsity_dict[k]/sum)
-        return sparsity_dict
-    
     model.to(torch.device("cpu"))
     if args.pm != 0:
-        # sparsity_dict = pruner_utils.get_sparsity(model, args.pm)
-        # pruner_utils.prune_model(model, sparsity_dict)
-        example_input = {'x': torch.randn(1,3,320,320), 'x_radar': torch.randn(1,3,320,320)}
-        imp = tp.importance.TaylorImportance()
-        ignored_layers = []
-        for m in model.modules():
-            if isinstance(m, ShuffleAttention):
-                ignored_layers.append(m)
-        print("ignore_layers", ignored_layers)
-        pruner = tp.pruner.MagnitudePruner(model, example_inputs=example_input, importance=imp, iterative_steps=1, ch_sparsity=0.5, ignored_layers=ignored_layers)
-        base_macs, base_nparams = tp.utils.count_ops_and_params(model, example_input)
-        for i in range(1):
-            if isinstance(imp, tp.importance.TaylorImportance):
-                # Taylor expansion requires gradients for importance estimation
-                loss = model(example_input).sum() # a dummy loss for TaylorImportance
-                loss.backward() # before pruner.step()
-            pruner.step()
-            macs, nparams = tp.utils.count_ops_and_params(model, example_input)
+        sparsity_dict = pruner_utils.get_sparsity(model.image_radar_encoder, args.pm)
+        pruner_utils.prune_model(model.image_radar_encoder, sparsity_dict)
 
     model.to(device)
 
