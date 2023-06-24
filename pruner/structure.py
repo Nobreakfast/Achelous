@@ -25,7 +25,11 @@ def structure_conv(conv: nn.Module, index: list, dim: int)->nn.Module:
     new_conv = nn.Conv2d(weight_shape[1], weight_shape[0], weight_shape[2:], stride=conv.stride, padding=conv.padding, dilation=conv.dilation, groups=conv.groups, bias=conv.bias is not None)
     new_conv.weight = nn.Parameter(torch.index_select(conv.weight, dim, torch.tensor(saved_index)))
     if conv.bias is not None:
-        new_conv.bias = nn.Parameter(torch.index_select(conv.bias, dim, torch.tensor(saved_index)))
+        if dim == 0:
+            # new_conv.bias = nn.Parameter(torch.index_select(conv.bias, dim, torch.tensor(saved_index)))
+            new_conv.bias.data = conv.bias[saved_index]
+        else:
+            new_conv.bias.data = conv.bias.data
     return new_conv
 
 def structure_fc(fc: nn.Module, index: list, dim: int)->nn.Module:
@@ -43,10 +47,33 @@ def structure_fc(fc: nn.Module, index: list, dim: int)->nn.Module:
     saved_index = [i for i in range(weight_shape[dim]) if i not in index]
     weight_shape[dim] -= len(index)
     new_fc = nn.Linear(weight_shape[1], weight_shape[0], bias=fc.bias is not None)
-    new_fc.weight = nn.Parameter(torch.index_select(fc.weight, dim, torch.tensor(saved_index)))
+    new_fc.weight.data = nn.Parameter(torch.index_select(fc.weight, dim, torch.tensor(saved_index)))
     if fc.bias is not None:
-        new_fc.bias = nn.Parameter(torch.index_select(fc.bias, dim, torch.tensor(saved_index)))
+        if dim == 0:
+            #new_fc.bias = nn.Parameter(torch.index_select(fc.bias, dim, torch.tensor(saved_index)))
+            new_fc.bias.data = fc.bias[saved_index]
+        else:
+            new_fc.bias.data = fc.bias.data
     return new_fc
+
+def structure_bn(bn: nn.Module, index):
+    """
+    Prune the BatchNorm Layer:
+    return a new bn layer with pruned weight
+    :param bn: nn.BatchNorm2d
+    :param index: list of index to be pruned
+    :return new_bn: nn.BatchNorm2d
+    """
+    weight_shape = list(bn.weight.shape)
+    saved_index = [i for i in range(weight_shape[0]) if i not in index]
+    weight_shape[0] -= len(index)
+    new_bn = nn.BatchNorm2d(weight_shape[0], bn.eps, bn.momentum, bn.affine, bn.track_running_stats)
+    new_bn.weight.data = bn.weight.data[saved_index]
+    if bn.bias is not None:
+        new_bn.bias.data = bn.bias.data[saved_index]
+    return new_bn
+
+
 
 if __name__ == "__main__":
     conv = nn.Conv2d(3, 6, 3, bias=False)
