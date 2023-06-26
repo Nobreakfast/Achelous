@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils.prune as prune
+import backbone.attention_modules.shuffle_attention as sa
 
 
 class Pruner:
@@ -21,13 +22,14 @@ def structure_conv(conv: nn.Module, index: list, dim: int) -> nn.Module:
     assert dim in [0, 1], "dim must be 0 or 1"
     if len(index) == 0:
         return conv
+    chs = [conv.out_channels, conv.in_channels]
     weight_shape = list(conv.weight.shape)
     # invert the index
-    saved_index = [i for i in range(weight_shape[dim]) if i not in index]
-    weight_shape[dim] -= len(index)
+    saved_index = [i for i in range(chs[dim]) if i not in index]
+    chs[dim] -= len(index)
     new_conv = nn.Conv2d(
-        weight_shape[1],
-        weight_shape[0],
+        chs[1],
+        chs[0],
         weight_shape[2:],
         stride=conv.stride,
         padding=conv.padding,
@@ -96,6 +98,75 @@ def structure_bn(bn: nn.Module, index):
     if bn.bias is not None:
         new_bn.bias.data = bn.bias.data[saved_index]
     return new_bn
+
+
+def structure_ln(ln: nn.Module, index):
+    """
+    Prune the LayerNorm Layer:
+    return a new ln layer with pruned weight
+    :param ln: nn.LayerNorm
+    :param index: list of index to be pruned
+    :return new_ln: nn.LayerNorm
+    """
+    if len(index) == 0:
+        return ln
+    weight_shape = list(ln.weight.shape)
+    saved_index = [i for i in range(weight_shape[0]) if i not in index]
+    weight_shape[0] -= len(index)
+    new_ln = nn.LayerNorm(weight_shape[0], ln.eps, ln.elementwise_affine)
+    new_ln.weight.data = ln.weight.data[saved_index]
+    if ln.bias is not None:
+        new_ln.bias.data = ln.bias.data[saved_index]
+    return new_ln
+
+
+def structure_gn(gn: nn.Module, index):
+    """
+    Prune the GroupNorm Layer:
+    return a new gn layer with pruned weight
+    :param gn: nn.GroupNorm
+    :param index: list of index to be pruned
+    :return new_gn: nn.GroupNorm
+    """
+    if len(index) == 0:
+        return gn
+    weight_shape = list(gn.weight.shape)
+    saved_index = [i for i in range(weight_shape[0]) if i not in index]
+    weight_shape[0] -= len(index)
+    new_gn = nn.GroupNorm(weight_shape[0], weight_shape[0])
+    new_gn.weight.data = gn.weight.data[saved_index]
+    if gn.bias is not None:
+        new_gn.bias.data = gn.bias.data[saved_index]
+    return new_gn
+
+
+def structure_shuffleAttn(shuffleAttn: sa.ShuffleAttention, index):
+    """
+    Prune the ShuffleAttn Layer:
+    return a new shuffleAttn layer with pruned weight
+    :param shuffleAttn: nn.ShuffleAttn
+    :param index: list of index to be pruned
+    :return new_shuffleAttn: nn.ShuffleAttn
+    """
+    if len(index) == 0:
+        return shuffleAttn
+    in_channels = shuffleAttn.channel
+    saved_index = [i for i in range(in_channels) if i not in index]
+    saved_index = [i // shuffleAttn.groups for i in saved_index]
+    saved_index = list(set(saved_index))[: len(saved_index) // shuffleAttn.groups]
+    channels = in_channels - len(index)
+    new_shuffleAttn = sa.ShuffleAttention(channels, G=8)
+    fake_index = [i for i in range(shuffleAttn.gn.num_groups) if i not in saved_index]
+    setattr(
+        new_shuffleAttn,
+        "gn",
+        structure_gn(shuffleAttn.gn, fake_index),
+    )
+    new_shuffleAttn.cweight.data = shuffleAttn.cweight.data[:, saved_index, :, :]
+    new_shuffleAttn.cbias.data = shuffleAttn.cbias.data[:, saved_index, :, :]
+    new_shuffleAttn.sweight.data = shuffleAttn.sweight.data[:, saved_index, :, :]
+    new_shuffleAttn.sbias.data = shuffleAttn.sbias.data[:, saved_index, :, :]
+    return new_shuffleAttn
 
 
 if __name__ == "__main__":
