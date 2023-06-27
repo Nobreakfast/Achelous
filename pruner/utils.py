@@ -72,7 +72,7 @@ def get_dep_dcit(
     # get the white list and module dict
     if debug:
         print("Get white list and module dict...")
-    white_list = ["output"]
+    white_list = ["output", "input"]
     module_list = {}
     for k, m in model.named_modules():
         if not isinstance(m, tuple(type_list)):
@@ -95,14 +95,6 @@ def get_dep_dcit(
     # get module forward and backward dict
     forward_dict, backward_dict = {}, {}
 
-    # ==================== Upsample layer image_radar_encoder.fpn.upsample_5_to_4.upsample.1
-    # ==================== Upsample layer image_radar_encoder.fpn.upsample_4_to_3.upsample.1
-    # ==================== Upsample layer image_radar_encoder.fpn.lane_seg_3_to_2.upsample.1
-    # ==================== Upsample layer image_radar_encoder.fpn.lane_seg_2_to_1.upsample.1
-    # ==================== Upsample layer image_radar_encoder.fpn.lane_seg_1_to_0.upsample.1
-    # ==================== Upsample layer image_radar_encoder.fpn.se_seg_3_to_2.upsample.1
-    # ==================== Upsample layer image_radar_encoder.fpn.se_seg_2_to_1.upsample.1
-    # ==================== Upsample layer image_radar_encoder.fpn.se_seg_1_to_0.upsample.1
     def __forward_hook_callback(module, input, output):
         forward_dict[name_dict[id(module)]] = {}
         forward_dict[name_dict[id(module)]]["output"] = output
@@ -123,14 +115,27 @@ def get_dep_dcit(
         out = model(example_input)
     except:
         out = model(*example_input)
+
+    # def __sum(x):
+    #     sum = 0.0
+    #     for i in x:
+    #         try:
+    #             sum += i.sum()
+    #         except:
+    #             sum += __sum(i)
+    #     return sum
+
+    # outs = __sum(out)
+    # outs.backward()
     try:
         out.sum().backward()
     except:
-        outs = out[-1].sum()
-        # outs = 0
-        # for o in out:
-        #     outs += o.sum()
-        outs.backward()
+        try:
+            outs = out[-1].sum()
+            outs.backward()
+        except:
+            outs = out[-1][0].sum()
+            outs.backward()
 
     # fill the dependency dict
     def __check_id(g):
@@ -140,21 +145,54 @@ def get_dep_dcit(
         return "none"
 
     checked_list = []
-    cat_list = []
+    cat_list = [[], []]
+
+    def __find_layer(g):
+        layers = []
+        for subg in g.next_functions:
+            # if subg[0] is 'NoneType', continue
+            if subg[0] == None:
+                continue
+            id = __check_id(subg[0])
+            if id != "none":
+                layers.append(id)
+            else:
+                layers.extend(__find_layer(subg[0]))
+        return layers
 
     def __fill_dep(parent, g, level=0):  # TODO level: useless params
         if (parent, g) in checked_list:
             return
         if g == None:
             return
+        id = __check_id(g)
+
+        # if id == "image_radar_encoder.fpn.ghost_5_to_4.ghost2.cheap_operation.0":
+        #     print("=" * 30, id, parent, g)
+        # if id == "image_radar_encoder.fpn.ghost_5_to_4.ghost2.primary_conv.0":
+        #     print("=" * 30, id, parent, g)
+        # if id == "image_radar_encoder.fpn.ghost_5_to_4.ghost2.cheap_operation.0":
+        #     print("=" * 30, id, parent, g)
         if g.__class__.__name__ == "CatBackward0":
-            cat_list.append(parent)
+            # print("=" * 20, "CatBackward0", "=" * 20)
+            # print("parent:", parent)
+            cat_list[0].append(parent)
+            # if id != "none":
+            #     cat_list[1].append(id)
+            #     print("id:", id)
+            # else:
+            #     layer = __find_layer(g)
+            #     cat_list[1].extend(layer)
+            #     print("id:", layer)
+            pass
+
         elif g.__class__.__name__ == "SplitBackward0":
             try:
-                cat_list.remove(parent)
+                cat_list[0].remove(parent)
             except:
                 pass
-        id = __check_id(g)
+            pass
+
         if id != "none":
             dep_dict[parent][id] = 1
             dep_dict[id][parent] = -1
@@ -163,9 +201,6 @@ def get_dep_dcit(
             id = parent
         checked_list.append((parent, g))
         for subg in g.next_functions:
-            if parent == "image_radar_encoder.fpn.spp.cv2.conv":
-                print("=" * 20, "image_radar_encoder.fpn.spp.cv2.conv", "=" * 20)
-                print(g)
             __fill_dep(id, subg[0], level + 1)
 
     if debug:
@@ -195,11 +230,11 @@ def get_group_list(dep_dict, module_list, debug=False):
                 related_dict[k1]["out"].append(k2)
             else:
                 continue
-    for k, v in related_dict.items():
-        if k[-10:] == "upsample.1":
-            print("*" * 20, k)
-            print("in", related_dict[k]["in"])
-            print("out", related_dict[k]["out"])
+    # for k, v in related_dict.items():
+    #     if k[-10:] == "upsample.1":
+    #         print("*" * 20, k)
+    #         print("in", related_dict[k]["in"])
+    #         print("out", related_dict[k]["out"])
     # get the group dict
     group_list = []
     layers = []
@@ -211,12 +246,13 @@ def get_group_list(dep_dict, module_list, debug=False):
             if i == "output":
                 continue
             if isinstance(
-                module_list[i], (nn.BatchNorm2d, nn.LayerNorm, sa.ShuffleAttention)
+                module_list[i],
+                (nn.BatchNorm2d, nn.LayerNorm, sa.ShuffleAttention),
             ):
                 tmp_list += __add_layer(related_dict[i][layer_type], layer_type)
             else:
-                if i[-10:] == "upsample.1":
-                    print("*" * 20, i)
+                # if i[-10:] == "upsample.1":
+                #     print("*" * 20, i)
                 tmp_list.append(i)
         return tmp_list
 
@@ -257,12 +293,12 @@ def get_group_list(dep_dict, module_list, debug=False):
         print("get merged data...")
     layers = __get_merged_data(layers)
     # layers_next = __get_merged_data(layers_next)
-    for i in group_list:
-        for j in i["modules"]:
-            if j[-10:] == "upsample.1":
-                print("*" * 20, k)
-                print("module", j["modules"])
-                print("next", j["out"])
+    # for i in group_list:
+    #     for j in i["modules"]:
+    #         if j[-10:] == "upsample.1":
+    #             print("*" * 20, k)
+    #             print("module", j["modules"])
+    #             print("next", j["out"])
     if debug:
         print("get group list...")
 
@@ -331,14 +367,26 @@ def prune_model(
     for i in group_list:
         # if i['next'] == ['output']: # TODO: delete this and add in the get_group_list
         #    continue
-        if isinstance(module_list[i["modules"][0]], nn.Conv2d):
-            out_ch = module_list[i["modules"][0]].out_channels
-        elif isinstance(module_list[i["modules"][0]], nn.Linear):
-            out_ch = module_list[i["modules"][0]].out_features
-        elif isinstance(module_list[i["modules"][0]], (nn.Upsample, nn.BatchNorm2d)):
+        channel_list = []
+        for j in i["modules"]:
+            if isinstance(module_list[j], nn.Conv2d):
+                channel_list.append(module_list[j].out_channels)
+            elif isinstance(module_list[j], nn.Linear):
+                channel_list.append(module_list[j].out_features)
+            # elif isinstance(module_list[i["modules"][0]], (nn.Upsample, nn.BatchNorm2d)):
+            #     continue
+            else:
+                channel_list.append(module_list[j].channel)
+        channel_list = list(set(channel_list))
+        if debug:
+            print("=" * 30)
+            print(channel_list)
+            for ch in channel_list:
+                if ch in cat_list[1]:
+                    print("cat", ch)
+            print("=" * 30)
+        if len(channel_list) > 1:
             continue
-        else:
-            out_ch = module_list[i["modules"][0]].channel
 
         # calculate round_to
         round_to = [1]
@@ -351,17 +399,32 @@ def prune_model(
             except:
                 continue
         round_to = max(round_to)
-        if prune_type == "random":
-            prune_num = int(math.floor(out_ch * ratio / round_to) * round_to)
-            prune_idx = torch.randperm(out_ch)[:prune_num]
-        if debug:
-            print(
-                "round_to:",
-                round_to,
-                "prune_num:",
-                prune_num,
-            )
+        # cat_list[1].append("image_radar_encoder.fpn.ghost_5_to_4.ghost2.primary_conv.0")
+        # cat_list[1].append(
+        #     "image_radar_encoder.fpn.ghost_5_to_4.ghost2.cheap_operation.0"
+        # )
+        # cat_list[1].append("image_radar_encoder.fpn.ghost_4_to_3.ghost2.primary_conv.0")
+        # cat_list[1].append(
+        #     "image_radar_encoder.fpn.ghost_4_to_3.ghost2.cheap_operation.0"
+        # )
+        out_ch = channel_list[0]
+        if "image_radar_encoder.fpn.backbone.conv2.0" in i["modules"]:
+            continue
+        if "image_radar_encoder.fpn.spp.cv2.conv" in i["modules"]:
+            continue
+        if "input" in i["modules"]:
+            continue
         for j in i["modules"]:
+            # if j in cat_list[1]:
+            #     tmp_out_ch = int(out_ch / 2)
+            # else:
+            #     tmp_out_ch = out_ch
+            # print("tmp_out_ch:", tmp_out_ch)
+            if prune_type == "random":
+                prune_num = int(math.floor(out_ch * ratio / round_to) * round_to)
+                prune_idx = torch.randperm(out_ch)[:prune_num]
+                # if len(prune_idx) == tmp_out_ch:
+                #     prune_idx = torch.tensor([])
             if debug:
                 print("pruning modules:", j, module_list[j])
             if j in ignore_list[0]:  # or module_list[j] in ignore_list[1]:
@@ -374,13 +437,13 @@ def prune_model(
                 pruned_module = structure_fc(module_list[j], prune_idx, 0)
             elif isinstance(module_list[j], sa.ShuffleAttention):
                 pruned_module = structure_shuffleAttn(module_list[j], prune_idx)
-            # elif isinstance(module_list[j], nn.Upsample):
-            #     module_list[related_dict[j]["in"][0]].groups = 2
+            else:
+                continue
             module_list[j] = pruned_module
             __set_module(j, pruned_module)
 
-        intersection = list(set(i["next"]).intersection(cat_list))
-        intersection = [k for k in cat_list if k in intersection]
+        intersection = list(set(i["next"]).intersection(cat_list[0]))
+        intersection = [k for k in cat_list[0] if k in intersection]
         if "image_radar_encoder.fpn.spp.cv2.conv" in intersection:
             intersection.append("image_radar_encoder.fpn.spp.cv2.conv")
             intersection.append("image_radar_encoder.fpn.spp.cv2.conv")
@@ -393,6 +456,9 @@ def prune_model(
                 if debug:
                     print("ignore:", j, "in next")
                 continue
+            if prune_type == "random":
+                prune_num = int(math.floor(out_ch * ratio / round_to) * round_to)
+                prune_idx = torch.randperm(out_ch)[:prune_num]
             if isinstance(module_list[j], nn.Conv2d):
                 pruned_module = structure_conv(module_list[j], prune_idx, 1)
             elif isinstance(module_list[j], nn.Linear):

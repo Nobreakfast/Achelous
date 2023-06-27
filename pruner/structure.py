@@ -20,7 +20,9 @@ def structure_conv(conv: nn.Module, index: list, dim: int) -> nn.Module:
     :return new_conv: nn.Conv2d
     """
     assert dim in [0, 1], "dim must be 0 or 1"
+    # print(len(index), index)
     if len(index) == 0:
+        # print("index is empty")
         return conv
     chs = [conv.out_channels, conv.in_channels]
     weight_shape = list(conv.weight.shape)
@@ -46,6 +48,7 @@ def structure_conv(conv: nn.Module, index: list, dim: int) -> nn.Module:
             new_conv.bias.data = conv.bias[saved_index]
         else:
             new_conv.bias.data = conv.bias.data
+    # print("new_conv", new_conv)
     return new_conv
 
 
