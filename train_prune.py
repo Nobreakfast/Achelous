@@ -351,31 +351,31 @@ if __name__ == "__main__":
     # ------------------------------------------------------#
     #   创建模型
     # ------------------------------------------------------#
-    if is_radar_pc_seg:
-        model = Achelous(
-            resolution=input_shape[0],
-            num_det=num_classes,
-            num_seg=num_classes_seg,
-            phi=phi,
-            backbone=backbone,
-            neck=neck,
-            nano_head=lightweight,
-            pc_seg=pc_seg_model,
-            pc_channels=radar_pc_channels,
-            pc_classes=radar_pc_classes,
-            spp=spp,
-        ).cuda(local_rank)
-    else:
-        model = Achelous3T(
-            resolution=input_shape[0],
-            num_det=num_classes,
-            num_seg=num_classes_seg,
-            phi=phi,
-            backbone=backbone,
-            neck=neck,
-            spp=spp,
-            nano_head=lightweight,
-        ).cuda(local_rank)
+    # if is_radar_pc_seg:
+    #     model = Achelous(
+    #         resolution=input_shape[0],
+    #         num_det=num_classes,
+    #         num_seg=num_classes_seg,
+    #         phi=phi,
+    #         backbone=backbone,
+    #         neck=neck,
+    #         nano_head=lightweight,
+    #         pc_seg=pc_seg_model,
+    #         pc_channels=radar_pc_channels,
+    #         pc_classes=radar_pc_classes,
+    #         spp=spp,
+    #     ).cuda(local_rank)
+    # else:
+    #     model = Achelous3T(
+    #         resolution=input_shape[0],
+    #         num_det=num_classes,
+    #         num_seg=num_classes_seg,
+    #         phi=phi,
+    #         backbone=backbone,
+    #         neck=neck,
+    #         spp=spp,
+    #         nano_head=lightweight,
+    #     ).cuda(local_rank)
 
     if model_path != "":
         # ------------------------------------------------------#
@@ -419,11 +419,11 @@ if __name__ == "__main__":
     # ------------------------------------------------------#
     #   Pruning
     # ------------------------------------------------------#
-    model.to(torch.device("cpu"))
+    # model.to(torch.device("cpu"))
     model = test1()
-    if args.pm != 0:
-        sparsity_dict = pruner_utils.get_sparsity(model.image_radar_encoder, args.pm)
-        pruner_utils.prune_model(model.image_radar_encoder, sparsity_dict)
+    # if args.pm != 0:
+    #     sparsity_dict = pruner_utils.get_sparsity(model.image_radar_encoder, args.pm)
+    #     pruner_utils.prune_model(model.image_radar_encoder, sparsity_dict)
 
     model.to(device)
 
