@@ -58,7 +58,7 @@ def test2():
             ignored_layers.append(m)  # DO NOT prune the final classifier!
 
     iterative_steps = 5  # progressive pruning
-    pruner = tp.pruner.RandomPruner(
+    pruner = tp.pruner.MagnitudePruner(
         model,
         example_inputs2,
         importance=imp,
