@@ -189,12 +189,12 @@ def get_dep_dcit(
             #     print("id:", layer)
             pass
 
-        elif g.__class__.__name__ == "SplitBackward0":
-            try:
-                cat_list[0].remove(parent)
-            except:
-                pass
-            pass
+        # elif g.__class__.__name__ == "SplitBackward0":
+        #     try:
+        #         cat_list[0].remove(parent)
+        #     except:
+        #         pass
+        #     pass
 
         if id != "none":
             dep_dict[parent][id] = 1
@@ -253,6 +253,8 @@ def get_group_list(dep_dict, module_list, debug=False):
                 (nn.BatchNorm2d, nn.LayerNorm, sa.ShuffleAttention),
             ):
                 tmp_list += __add_layer(related_dict[i][layer_type], layer_type)
+            # elif isinstance(module_list[i], nn.Conv2d) and module_list[i].groups > 1:
+            #     tmp_list += __add_layer(related_dict[i][layer_type], layer_type)
             else:
                 # if i[-10:] == "upsample.1":
                 #     print("*" * 20, i)
@@ -315,6 +317,10 @@ def get_group_list(dep_dict, module_list, debug=False):
             next_layer.extend(related_dict[layer]["out"])
             for k in related_dict[layer]["out"]:
                 next_layer.extend(__get_next_layer(k))
+        # elif isinstance(module_list[layer], nn.Conv2d) and module_list[layer].groups > 1:
+        #     next_layer.extend(related_dict[layer]["out"])
+        #     for k in related_dict[layer]["out"]:
+        #         next_layer.extend(__get_next_layer(k))
         return next_layer
 
     for i in layers:
@@ -394,36 +400,67 @@ def prune_model(
                     print("cat", ch)
             print("=" * 30)
         if len(channel_list) > 1:
+            # print("pruning group:", i)
+            # print("channel", channel_list, "length > 1")
+            # print("channel_list:", channel_list)
             if debug:
                 print("pruning group:", i)
                 print("channel", channel_list, "length > 1")
-            continue
+            if 18 in channel_list:
+                channel_list.remove(18)
+                channel_list.remove(9)
+            else:
+                continue
+        
+        ############################
+        # patch for deformable conv
+        ############################
+        for l in i["next"]:
+            # if module_list[l].out_channels == 9 or module_list[l].out_channels == 18:
+            #     ignore_list[1].remove(l)
+            if l[:44] == "image_radar_encoder.radar_encoder.rc_blocks." and l[-39:]==".radar_conv.deformable_conv.offset_conv":
+                i["next"].append(l[:-11]+"regular_conv")
+        
+        for l in i["modules"]:
+            # if module_list[l].out_channels == 9 or module_list[l].out_channels == 18:
+            #     ignore_list[1].remove(l)
+            if l[:44] == "image_radar_encoder.radar_encoder.rc_blocks." and l[-39:]==".radar_conv.deformable_conv.offset_conv":
+                i["modules"].remove(l[:-11]+"offset_conv")
+                i["modules"].remove(l[:-11]+"modulator_conv")
+                i["modules"].append(l[:-11]+"regular_conv")
+                channel_list.append(module_list[l[:-11]+"regular_conv"].out_channels)
+        ############################
+        # patch for deformable conv end
+        ############################
 
         # calculate round_to
         round_to = [1]
         for j in i["next"] + i["modules"]:
             if j == "output":
                 continue
-            # if isinstance(module_list[j], nn.Conv2d):
             try:
                 round_to.append(module_list[j].groups)
             except:
                 continue
+        # print("="*20)
+        # print(i["next"] + i["modules"])
+        # print(round_to)
         round_to = max(round_to)
-        # cat_list[1].append("image_radar_encoder.fpn.ghost_5_to_4.ghost2.primary_conv.0")
-        # cat_list[1].append(
-        #     "image_radar_encoder.fpn.ghost_5_to_4.ghost2.cheap_operation.0"
-        # )
-        # cat_list[1].append("image_radar_encoder.fpn.ghost_4_to_3.ghost2.primary_conv.0")
-        # cat_list[1].append(
-        #     "image_radar_encoder.fpn.ghost_4_to_3.ghost2.cheap_operation.0"
-        # )
-        out_ch = channel_list[0]
+        # round_to = 1
+
+        try:
+            out_ch = channel_list[0]
+        except:
+            out_ch = 99
         if "image_radar_encoder.fpn.backbone.conv2.0" in i["modules"]:
             continue
         if "image_radar_encoder.fpn.spp.cv2.conv" in i["modules"]:
             continue
         if "input" in i["modules"]:
+            continue
+        if set(i["modules"]).intersection(ignore_list[0]):
+            if debug:
+                print("ignore_list", set(i["modules"]).intersection(ignore_list[0]))
             continue
         for j in i["modules"]:
             # if j in cat_list[1]:
@@ -472,6 +509,10 @@ def prune_model(
                 prune_idx = torch.randperm(out_ch)[:prune_num]
             if isinstance(module_list[j], nn.Conv2d):
                 pruned_module = structure_conv(module_list[j], prune_idx, 1)
+                # if module_list[j].groups == 1:
+                #     pruned_module = structure_conv(module_list[j], prune_idx, 1)
+                # elif module_list[j].groups > 1:
+                #     pruned_module = structure_group_conv(module_list[j], prune_idx)
             elif isinstance(module_list[j], nn.Linear):
                 pruned_module = structure_fc(module_list[j], prune_idx, 1)
             elif isinstance(module_list[j], nn.BatchNorm2d):

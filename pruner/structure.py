@@ -48,9 +48,45 @@ def structure_conv(conv: nn.Module, index: list, dim: int) -> nn.Module:
             new_conv.bias.data = conv.bias[saved_index]
         else:
             new_conv.bias.data = conv.bias.data
-    # print("new_conv", new_conv)
+    print("new_conv", new_conv)
     return new_conv
 
+def structure_group_conv(conv: nn.Module, index: list) -> nn.Module:
+    """
+    Prune the Convolution Layer:
+    return a new conv layer with pruned weight
+    :param conv: nn.Conv2d
+    :param index: list of index to be pruned
+    :param dim: 0 for prune output channel, 1 for prune input channel
+    :return new_conv: nn.Conv2d
+    """
+    # print(len(index), index)
+    if len(index) == 0:
+        # print("index is empty")
+        return conv
+    chs = conv.out_channels
+    weight_shape = list(conv.weight.shape)
+    # invert the index
+    saved_index = [i for i in range(chs) if i not in index]
+    chs -= len(index)
+    new_conv = nn.Conv2d(
+        chs,
+        chs,
+        weight_shape[2:],
+        stride=conv.stride,
+        padding=conv.padding,
+        dilation=conv.dilation,
+        groups=chs,
+        bias=conv.bias is not None,
+    )
+    new_conv.weight = nn.Parameter(
+        torch.index_select(conv.weight, 0, torch.tensor(saved_index))
+    )
+    if conv.bias is not None:
+        # new_conv.bias = nn.Parameter(torch.index_select(conv.bias, dim, torch.tensor(saved_index)))
+        new_conv.bias.data = conv.bias[saved_index]
+    print("new_conv", new_conv)
+    return new_conv
 
 def structure_fc(fc: nn.Module, index: list, dim: int) -> nn.Module:
     """
@@ -100,6 +136,7 @@ def structure_bn(bn: nn.Module, index):
     new_bn.weight.data = bn.weight.data[saved_index]
     if bn.bias is not None:
         new_bn.bias.data = bn.bias.data[saved_index]
+    print("new_bn", new_bn)
     return new_bn
 
 

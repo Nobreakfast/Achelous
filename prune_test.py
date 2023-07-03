@@ -17,6 +17,7 @@ from pruner.utils import *
 import torch_pruning as tp
 
 import backbone.attention_modules.shuffle_attention as sa
+import backbone.radar.RadarEncoder as re
 from torchinfo import summary
 import time
 
@@ -50,10 +51,15 @@ def test2():
     imp = tp.importance.TaylorImportance()
 
     ignored_layers = []
-    ignored_layers_type = [sa.ShuffleAttention]
+    ignored_layers_type = [sa.ShuffleAttention, re.RadarConv]
     for m in model.modules():
         if isinstance(m, tuple(ignored_layers_type)):
             ignored_layers.append(m)
+        if isinstance(m, sa.ShuffleAttention):
+            ignored_layers.append(m.cweight)
+            ignored_layers.append(m.sweight)
+            ignored_layers.append(m.cbias)
+            ignored_layers.append(m.sbias)
 
     for m in model.modules():
         if isinstance(m, torch.nn.Linear) and m.out_features == 1000:
@@ -133,15 +139,15 @@ def test1():
 
     output = model(*list(example_input))
     __print_shape(output)
-    flops, params = profile(model, inputs=example_input)
-    print(
-        "flops:",
-        flops,
-        "params:",
-        params,
-    )
+    # flops, params = profile(model, inputs=example_input)
+    # print(
+    #     "flops:",
+    #     flops,
+    #     "params:",
+    #     params,
+    # )
     summary(model, input_size=[(1,3,320,320), (1,3,320,320)])
-    #__test_fps(model, example_input, torch.device("cuda:0"))
+    # __test_fps(model, example_input, torch.device("cuda:0"))
 
     ignore_Block = [sa.ShuffleAttention]
     tl = [
@@ -163,11 +169,14 @@ def test1():
         if isinstance(m, tuple(ignore_Block)):
             il[0].append(k + ".gn")
             il[1].append(k + ".gn")
-        if k[:45] == "image_radar_encoder.radar_encoder.rc_blocks.0" and isinstance(
+        if k[:43] == "image_radar_encoder.radar_encoder.rc_blocks" and isinstance(
             m, (nn.Conv2d, nn.BatchNorm2d)
         ):
-            il[0].append(k)
-            il[1].append(k)
+            if k[-11:] == "offset_conv" or k[-14:] == "modulator_conv":
+                il[0].append(k)
+    
+    il[0].append("image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1")
+    # il[0].remove("image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv2")
 
     model.to(torch.device("cpu"))
     model_new = prune_model(
@@ -176,7 +185,7 @@ def test1():
         example_input=example_input,
         type_list=tl,
         ignore_list=il,
-        debug=False,
+        debug=True,
     )
 
     # for k, m in model.named_modules():
@@ -200,3 +209,4 @@ def test1():
 
 if __name__ == "__main__":
     test1()
+    # test2()
