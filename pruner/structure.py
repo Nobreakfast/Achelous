@@ -48,7 +48,7 @@ def structure_conv(conv: nn.Module, index: list, dim: int) -> nn.Module:
             new_conv.bias.data = conv.bias[saved_index]
         else:
             new_conv.bias.data = conv.bias.data
-    print("new_conv", new_conv)
+    # print("new_conv", new_conv)
     return new_conv
 
 def structure_group_conv(conv: nn.Module, index: list) -> nn.Module:
@@ -85,7 +85,7 @@ def structure_group_conv(conv: nn.Module, index: list) -> nn.Module:
     if conv.bias is not None:
         # new_conv.bias = nn.Parameter(torch.index_select(conv.bias, dim, torch.tensor(saved_index)))
         new_conv.bias.data = conv.bias[saved_index]
-    print("new_conv", new_conv)
+    # print("new_conv", new_conv)
     return new_conv
 
 def structure_fc(fc: nn.Module, index: list, dim: int) -> nn.Module:
@@ -136,7 +136,7 @@ def structure_bn(bn: nn.Module, index):
     new_bn.weight.data = bn.weight.data[saved_index]
     if bn.bias is not None:
         new_bn.bias.data = bn.bias.data[saved_index]
-    print("new_bn", new_bn)
+    # print("new_bn", new_bn)
     return new_bn
 
 

@@ -139,15 +139,15 @@ def test1():
 
     output = model(*list(example_input))
     __print_shape(output)
-    # flops, params = profile(model, inputs=example_input)
-    # print(
-    #     "flops:",
-    #     flops,
-    #     "params:",
-    #     params,
-    # )
-    summary(model, input_size=[(1,3,320,320), (1,3,320,320)])
-    # __test_fps(model, example_input, torch.device("cuda:0"))
+    flops, params = profile(model, inputs=example_input)
+    print(
+        "flops:",
+        flops,
+        "params:",
+        params,
+    )
+    # summary(model, input_size=[(1,3,320,320), (1,3,320,320)])
+    __test_fps(model, example_input, torch.device("cuda:0"))
 
     ignore_Block = [sa.ShuffleAttention]
     tl = [
@@ -185,7 +185,7 @@ def test1():
         example_input=example_input,
         type_list=tl,
         ignore_list=il,
-        debug=True,
+        debug=False,
     )
 
     # for k, m in model.named_modules():
@@ -199,8 +199,8 @@ def test1():
         "params:",
         params,
     )
-    summary(model_new, input_size=[(1,3,320,320), (1,3,320,320)])
-    #__test_fps(model_new, example_input, torch.device("cuda:0"))
+    # summary(model_new, input_size=[(1,3,320,320), (1,3,320,320)])
+    __test_fps(model_new, example_input, torch.device("cuda:0"))
 
     #__print_shape(output)
     # print(model_new)
