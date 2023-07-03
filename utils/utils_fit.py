@@ -144,7 +144,7 @@ def fit_one_epoch(
                     radar_pc_labels,
                 )
             else:
-                outputs_seg, outputs_seg_w, outputs = model_train(images, radars)
+                outputs, outputs_seg, outputs_seg_w  = model_train(images, radars)
 
             # ----------------------------------- 计算损失 ------------------------------------ #
             if focal_loss:
@@ -196,6 +196,7 @@ def fit_one_epoch(
                     outputs, outputs_seg, outputs_seg_w, outputs_seg_pc = model_train(
                         images, radars, radar_pc_features
                     )
+
                     nll_loss = NllLoss()
                     loss_pc_seg = nll_loss(
                         F.log_softmax(outputs_seg_pc).permute(0, 2, 1),
@@ -203,6 +204,11 @@ def fit_one_epoch(
                     )
                 else:
                     outputs, outputs_seg, outputs_seg_w = model_train(images, radars)
+                    # print("*"*20,outputs_seg.shape)
+                    # print("*"*20,outputs_seg_w.shape)
+                    # print("*"*20,outputs[0].shape)
+                    # print("*"*20,outputs[1].shape)
+                    # print("*"*20,outputs[2].shape)
 
                 # ----------------------------------- 计算损失 ------------------------------------ #
                 if focal_loss:
@@ -212,6 +218,16 @@ def fit_one_epoch(
                     loss_seg_w = Focal_Loss(
                         outputs_seg_w, pngs_w, weights_wl, num_classes=2
                     )
+                    # print("*"*10,outputs_seg.shape)
+                    # print("*"*20,pngs.shape)
+                    # print("*"*20,weights.shape)
+                    # print("*"*20,num_class_seg)
+                    # print("*"*20,loss_seg)
+                    # print("*"*20,outputs_seg_w.shape)
+                    # print("*"*20,pngs_w.shape)
+                    # print("*"*20,weights_wl.shape)
+                    # print("*"*20,2)
+                    # print("*"*20,loss_seg_w)
                 else:
                     loss_seg = CE_Loss(
                         outputs_seg, pngs, weights, num_classes=num_class_seg
@@ -235,6 +251,9 @@ def fit_one_epoch(
                     total_loss = mtl(loss_seg, logg_seg_w, loss_det) + loss_pc_seg
                     # total_loss = mgda.backward([loss_seg, logg_seg_w, loss_det, loss_pc_seg])
                 else:
+                    # print("-"*20, loss_seg.shape, )
+                    # print("-"*20, logg_seg_w.shape, )
+                    # print("-"*20,loss_det.shape)
                     total_loss = loss_seg + logg_seg_w + loss_det
                     # total_loss = mtl(loss_seg, logg_seg_w, loss_det)
                     # total_loss = mgda.backward([loss_seg, logg_seg_w, loss_det])
@@ -247,6 +266,7 @@ def fit_one_epoch(
             # ----------------------#
             #   back-propagation
             # ----------------------#
+            # print("="*20, total_loss.shape)
             scaler.scale(total_loss).backward()
             scaler.step(optimizer)
             scaler.update()

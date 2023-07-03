@@ -124,7 +124,7 @@ class Achelous3T(nn.Module):
     def forward(self, x, x_radar):
         fpn_out, se_seg_output, lane_seg_output = self.image_radar_encoder(x, x_radar)
         det_output = self.det_head(fpn_out)
-        return se_seg_output, lane_seg_output, det_output
+        return det_output, se_seg_output, lane_seg_output
 
 
 if __name__ == "__main__":

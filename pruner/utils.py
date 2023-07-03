@@ -129,13 +129,16 @@ def get_dep_dcit(
     # outs.backward()
     try:
         out.sum().backward()
+        print("out.sum().backward()")
     except:
         try:
+            outs = out[0][0].sum()
+            outs.backward()
+            print("out[0][0].sum().backward()")
+        except:
             outs = out[-1].sum()
             outs.backward()
-        except:
-            outs = out[-1][0].sum()
-            outs.backward()
+            print("out[-1].sum().backward()")
 
     # fill the dependency dict
     def __check_id(g):
@@ -347,9 +350,10 @@ def prune_model(
         print("cat_list:", cat_list)
         print("start getting group list")
     group_list, related_dict = get_group_list(dep_dict, module_list, debug=debug)
-    # for group in group_list:
-    #     print("modules:", group["modules"])
-    #     print("next_modules:", group["next"])
+    if debug:
+        for group in group_list:
+            print("modules:", group["modules"])
+            print("next_modules:", group["next"])
 
     def __set_module(name, new_module):
         name_list = name.split(".")
@@ -360,6 +364,9 @@ def prune_model(
             else:
                 module = getattr(module, i)
         setattr(module, name_list[-1], new_module)
+    if debug:
+        print("="*20, "image_radar_encoder.radar_encoder.rc_blocks.1.weight_conv1")
+        print(related_dict['image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1'])
 
     if debug:
         print("start pruning")
@@ -370,13 +377,14 @@ def prune_model(
         channel_list = []
         for j in i["modules"]:
             if isinstance(module_list[j], nn.Conv2d):
-                channel_list.append(module_list[j].out_channels)
+                ch = module_list[j].out_channels
             elif isinstance(module_list[j], nn.Linear):
-                channel_list.append(module_list[j].out_features)
+                ch = module_list[j].out_features
             # elif isinstance(module_list[i["modules"][0]], (nn.Upsample, nn.BatchNorm2d)):
             #     continue
             else:
-                channel_list.append(module_list[j].channel)
+                ch = module_list[j].channel
+            channel_list.append(ch)
         channel_list = list(set(channel_list))
         if debug:
             print("=" * 30)
@@ -386,6 +394,9 @@ def prune_model(
                     print("cat", ch)
             print("=" * 30)
         if len(channel_list) > 1:
+            if debug:
+                print("pruning group:", i)
+                print("channel", channel_list, "length > 1")
             continue
 
         # calculate round_to

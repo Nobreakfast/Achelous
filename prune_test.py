@@ -17,6 +17,8 @@ from pruner.utils import *
 import torch_pruning as tp
 
 import backbone.attention_modules.shuffle_attention as sa
+from torchinfo import summary
+import time
 
 
 def test2():
@@ -101,34 +103,45 @@ def __print_shape(output):
         for i in output:
             __print_shape(i)
 
+def __test_fps(model, example_input, device):
+    #device = torch.device("cpu")
+    model.to(device).eval()
+    with torch.no_grad():
+        example_input = [i.to(device) for i in example_input]
+        epoch = 300
+        for i in range(epoch):
+            output = model(*example_input)
+        t1 = time.time()
+        for i in range(epoch):
+            output = model(*example_input)
+        t2 = time.time()
+        print("fps:", (1 / ((t2 - t1) / epoch)))
+    model.cpu()
 
 def test1():
     model = Achelous3T(
         resolution=320,
         num_det=7,
         num_seg=9,
-        phi="S0",
+        phi="S2",
         backbone="mv",
         neck="gdf",
         spp=True,
         nano_head=False,
     )
-    # for k, m in model.named_modules():
-    #     if isinstance(m, (nn.Conv2d, nn.BatchNorm2d)):
-    #         print(k, m)
-    example_input = [torch.randn(2, 3, 320, 320), torch.randn(2, 3, 320, 320)]
-    # model = resnet18()
-    # example_input = (torch.randn(2, 3, 224, 224),)
+    example_input = [torch.randn(1, 3, 320, 320), torch.randn(1, 3, 320, 320)]
 
     output = model(*list(example_input))
     __print_shape(output)
-    macs, params = profile(model, inputs=example_input)
+    flops, params = profile(model, inputs=example_input)
     print(
-        "macs:",
-        macs,
+        "flops:",
+        flops,
         "params:",
         params,
     )
+    summary(model, input_size=[(1,3,320,320), (1,3,320,320)])
+    #__test_fps(model, example_input, torch.device("cuda:0"))
 
     ignore_Block = [sa.ShuffleAttention]
     tl = [
@@ -156,6 +169,7 @@ def test1():
             il[0].append(k)
             il[1].append(k)
 
+    model.to(torch.device("cpu"))
     model_new = prune_model(
         model,
         ratio=0.7,
@@ -169,15 +183,17 @@ def test1():
     #     if isinstance(m, (nn.Conv2d, nn.BatchNorm2d)):
     #         print(k, m)
     output = model_new(*list(example_input))
-    macs, params = profile(model_new, inputs=example_input)
+    flops, params = profile(model_new, inputs=example_input)
     print(
-        "macs:",
-        macs,
+        "flops:",
+        flops,
         "params:",
         params,
     )
+    summary(model_new, input_size=[(1,3,320,320), (1,3,320,320)])
+    #__test_fps(model_new, example_input, torch.device("cuda:0"))
 
-    __print_shape(output)
+    #__print_shape(output)
     # print(model_new)
     return model_new
 
