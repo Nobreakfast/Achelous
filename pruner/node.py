@@ -35,6 +35,12 @@ class BaseNode(abc.ABC):
         self.prune_idx = [[], []]
         self.in_count, self.out_count = 0, 0
         self.in_ch, self.out_ch = 0, 0
+        self.key = False
+        self.level = 0
+
+    @abc.abstractmethod
+    def execute(self):
+        pass
 
     def add_prev(self, prev):
         self.prev.append(prev)
@@ -60,6 +66,20 @@ class BaseNode(abc.ABC):
                 print("=" * 6, index)
             self.out_count += 1
 
+    def set_key(self):
+        self.key = True
+
+    def add_level(self, level):
+        self.level = max(level, self.level)
+
+    def get_channels(self):
+        self.in_ch = self.prev[0].out_ch
+        self.out_ch = self.next[0].in_ch
+        return self.in_ch, self.out_ch
+
+    def prune(self, prune_idx, dim):
+        self.prune_idx[dim] = prune_idx
+
 
 #########################
 ####### InOutNode #######
@@ -68,10 +88,46 @@ class InOutNode(BaseNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module, "in_out")
         self.in_ch, self.out_ch = self.get_channels()
+        self.saved_idx = [[], []]
 
     @abc.abstractmethod
     def get_channels(self):
         pass
+
+    @abc.abstractmethod
+    def execute(self):
+        pass
+
+    def _prune_weight(self):
+        self.saved_idx[0] = torch.LongTensor(
+            [i for i in range(self.in_ch) if i not in self.prune_idx[0]]
+        )
+        self.saved_idx[1] = torch.LongTensor(
+            [i for i in range(self.out_ch) if i not in self.prune_idx[1]]
+        )
+        self.module.weight = nn.Parameter(
+            torch.index_select(
+                torch.index_select(self.module.weight, 1, self.saved_idx[0]),
+                0,
+                self.saved_idx[1],
+            )
+        )
+        if self.module.weight.grad is not None:
+            self.module.weight.grad = nn.Parameter(
+                torch.index_select(
+                    torch.index_select(self.module.weight.grad, 1, self.saved_idx[0]),
+                    0,
+                    self.saved_idx[1],
+                )
+            )
+        if self.module.bias is not None:
+            self.module.bias = nn.Parameter(
+                torch.index_select(self.module.bias, 0, self.saved_idx[1])
+            )
+            if self.module.bias.grad is not None:
+                self.module.bias.grad = nn.Parameter(
+                    torch.index_select(self.module.bias.grad, 0, self.saved_idx[1])
+                )
 
 
 ####### ConvNode #######
@@ -82,6 +138,11 @@ class ConvNode(InOutNode):
     def get_channels(self):
         return self.module.in_channels, self.module.out_channels
 
+    def execute(self):
+        self.module.in_channels = self.in_ch - len(self.prune_idx[0])
+        self.module.out_channels = self.out_ch - len(self.prune_idx[1])
+        self._prune_weight()
+
 
 ###### LienarNode ######
 class LinearNode(InOutNode):
@@ -91,6 +152,11 @@ class LinearNode(InOutNode):
     def get_channels(self):
         return self.module.in_features, self.module.out_features
 
+    def execute(self):
+        self.module.in_features = self.in_ch - len(self.prune_idx[0])
+        self.module.out_features = self.out_ch - len(self.prune_idx[1])
+        self._prune_weight()
+
 
 #########################
 ####### InInNode ########
@@ -98,6 +164,9 @@ class LinearNode(InOutNode):
 class InInNode(BaseNode):
     def __init__(self, name: str) -> None:
         super().__init__(name, None, "in_in")
+
+    def execute(self):
+        pass
 
 
 ###### AddNode ########
@@ -131,10 +200,40 @@ class OutOutNode(BaseNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module, "out_out")
         self.in_ch, self.out_ch = self.get_channels()
+        self.saved_idx = []
 
     @abc.abstractmethod
-    def get_channels(self):
+    def execute(self):
         pass
+
+    def _prune_weight(self):
+        self.saved_idx = torch.LongTensor(
+            [i for i in range(self.in_ch) if i not in self.prune_idx[0]]
+        )
+        self.module.weight = nn.Parameter(
+            torch.index_select(
+                self.module.weight,
+                0,
+                self.saved_idx,
+            )
+        )
+        if self.module.weight.grad is not None:
+            self.module.weight.grad = nn.Parameter(
+                torch.index_select(
+                    self.module.weight.grad,
+                    0,
+                    self.saved_idx,
+                )
+            )
+
+        if self.module.bias is not None:
+            self.module.bias = nn.Parameter(
+                torch.index_select(self.module.bias, 0, self.saved_idx)
+            )
+            if self.module.bias.grad is not None:
+                self.module.bias.grad = nn.Parameter(
+                    torch.index_select(self.module.bias.grad, 0, self.saved_idx)
+                )
 
 
 ####### NormNode ########
@@ -145,6 +244,12 @@ class NormNode(OutOutNode):
     def get_channels(self):
         return self.module.num_features, self.module.num_features
 
+    def execute(self):
+        self.module.num_features = self.in_ch - len(self.prune_idx[0])
+        self._prune_weight()
+        self.module.running_mean = self.module.running_mean.data[self.saved_idx]
+        self.module.running_var = self.module.running_var.data[self.saved_idx]
+
 
 ####### GroupConvNode ########
 class GroupConvNode(OutOutNode):
@@ -154,6 +259,12 @@ class GroupConvNode(OutOutNode):
     def get_channels(self):
         return self.module.groups, self.module.groups
 
+    def execute(self):
+        self.module.groups = self.module.groups - len(self.prune_idx[0])
+        self.module.in_ch = self.module.groups
+        self.module.out_ch = self.module.groups
+        self._prune_weight()
+
 
 #########################
 ###### DummyNode ########
@@ -162,6 +273,14 @@ class DummyNode(BaseNode):
     def __init__(self, name: str) -> None:
         super().__init__(name, None, "dummy")
 
+    def get_channels(self):
+        self.in_ch = self.prev[0].out_ch
+        self.out_ch = -1
+        return self.in_ch, self.out_ch
+
+    def execute(self):
+        pass
+
 
 #########################
 ###### RemapNode ########
@@ -169,13 +288,14 @@ class DummyNode(BaseNode):
 class RemapNode(BaseNode):
     def __init__(self, name: str) -> None:
         super().__init__(name, None, "remap")
+        self.ratio = 1  # record the concat and split ratio
 
     def add_idx(self, index, dim):
         if self.in_ch == 0 and self.out_ch == 0:
             self.in_ch, self.out_ch = self.get_channels()
         return super().add_idx(index, dim)
 
-    def get_channels(self):
+    def execute(self):
         pass
 
 
@@ -185,10 +305,32 @@ class ConcatNode(RemapNode):
         super().__init__(name)
 
     def get_channels(self):
+        if self.in_ch != 0 and self.out_ch != 0:
+            return self.in_ch, self.out_ch
         for prev in self.prev:
-            self.in_ch += prev.out_ch
-        self.out_ch = prev.out_ch
+            if prev.out_ch == 0:
+                prev.get_channels()
+            if prev.key:
+                self.in_ch += prev.out_ch
+        self.ratio = self.in_ch // prev.out_ch
+        self.out_ch = self.in_ch
+        assert self.in_ch == prev.out_ch * self.ratio
+        assert (
+            self.out_ch == self.next[0].in_ch
+        ), f"self.next[0].in_ch: {self.next[0].in_ch}, self.out_ch: {self.out_ch}"
         return self.in_ch, self.out_ch
+
+    def prune(self, prune_idx, dim):
+        if dim == 0:
+            self.prune_idx[0] = torch.cat(
+                [
+                    torch.Tensor(self.prune_idx[0]),
+                    prune_idx + self.in_count * self.in_ch / self.ratio,
+                ],
+                dim=0,
+            )
+            self.prune_idx[1] = self.prune_idx[0]
+            self.in_count += 1
 
 
 ###### SplitNode ########
@@ -197,14 +339,44 @@ class SplitNode(RemapNode):
         super().__init__(name)
 
     def get_channels(self):
+        if self.in_ch != 0 and self.out_ch != 0:
+            return self.in_ch, self.out_ch
         for next in self.next:
-            self.in_ch += next.in_ch
+            if next.in_ch == 0:
+                next.get_channels()
+            if next.key:
+                self.in_ch += next.in_ch
+        self.ratio = self.in_ch // next.in_ch
         self.out_ch = next.in_ch
+
+        assert self.in_ch == next.in_ch * self.ratio
+        assert (
+            self.out_ch == self.next[0].in_ch
+        ), f"self.next[0].in_ch: {self.next[0].in_ch}, self.out_ch: {self.out_ch}"
         return self.in_ch, self.out_ch
+
+    def prune(self, prune_idx, dim):
+        if dim == 0:
+            self.prune_idx[0] = prune_idx
+            len_idx_unit = len(prune_idx) // self.ratio
+            for i in range(0, self.ratio):
+                start = i * len_idx_unit
+                end = (i + 1) * len_idx_unit
+                self.prune_idx[1].append(prune_idx[start:end] - i * self.out_ch)
 
 
 ###### AvgPoolNode ########
 class AvgPoolNode(RemapNode):
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+
+    def get_channels(self):
+        self.in_ch = self.prev[0].out_ch
+        return self.in_ch, self.in_ch
+
+
+###### AdaptiveAvgPoolNode ########
+class AdaptiveAvgPoolNode(RemapNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
 
@@ -230,11 +402,17 @@ class ReshapeNode(BaseNode):
     def __init__(self, name: str) -> None:
         super().__init__(name, None, "reshape")
 
+    def execute(self):
+        pass
+
 
 ###### FlattenNode ######
 class FlattenNode(ReshapeNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
+
+    def get_channels(self):
+        return 0, 0
 
 
 ########################
@@ -249,3 +427,6 @@ class DeformableNode(InOutNode):
 
     def get_channels(self):
         return self.module.in_channels, self.module.out_channels
+
+    def execute(self):
+        pass

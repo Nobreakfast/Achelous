@@ -1,0 +1,131 @@
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import abc
+from node import *
+
+"""
+params:
+    nodes: list, list of nodes
+    type: str, current or next
+"""
+
+
+#########################
+####### BaseGroup #######
+#########################
+class BaseGroup(abc.ABC):
+    """
+    BaseGroup
+    """
+
+    def __init__(self, nodes: list, type: str) -> None:
+        self.nodes = nodes
+        self.type = type
+        self.next_group = None
+        self.channel = self.get_info()
+
+    @abc.abstractmethod
+    def is_prunable(self):
+        pass
+
+    @abc.abstractmethod
+    def get_info(self):
+        pass
+
+    def print_info(self):
+        print("=" * 40)
+        print(f"group nodes: {[node.name for node in self.nodes]}")
+        print(f"group channels: {self.channel}")
+
+    def prune(self, prune_idx, dim):
+        for node in self.nodes:
+            node.prune(prune_idx, dim)
+
+
+#########################
+##### CurrentGroup ######
+#########################
+class CurrentGroup(BaseGroup):
+    def __init__(self, nodes: list) -> None:
+        super().__init__(nodes, "current")
+        self.__get_next_group()
+
+    def __get_next_group(self):
+        next_group = []
+        for node in self.nodes:
+            next_group.extend(node.next)
+        next_group = NextGroup(list(set(next_group)))
+        self.next_group = next_group
+
+    def is_prunable(self):
+        pass
+
+    def get_info(self):
+        out_ch = []
+        for node in self.nodes:
+            out_ch.append(node.get_channels()[1])
+        assert len(set(out_ch)) == 1, f"out_ch: {out_ch}"
+        return out_ch[0]
+
+    def print_next_info(self):
+        self.next_group.print_info()
+
+    def prune(self):
+        round_to = 1
+        split = 1
+        for node in self.next_group.nodes:
+            if node.name[:6] == "output":
+                return
+            if isinstance(node, SplitNode):
+                round_to = node.ratio
+                split = node.ratio
+                break
+        sparsity = 0.7
+        prune_num = (
+            int(math.floor(self.channel * sparsity / round_to) * round_to) // split
+        )
+        prune_idx = torch.cat(
+            [
+                torch.randperm(self.channel // split)[:prune_num]
+                + i * self.channel / split
+                for i in range(split)
+            ]
+        )
+        for node in self.nodes:
+            if node.prune_idx[1] != []:
+                print("=" * 20, "node:", node.name)
+                prune_idx = node.prune_idx[1]
+                break
+        super().prune(prune_idx, 1)
+        self.next_group.prune(prune_idx)
+
+
+#########################
+####### NextGroup #######
+#########################
+class NextGroup(BaseGroup):
+    def __init__(self, nodes: list) -> None:
+        super().__init__(nodes, "next")
+
+    def is_prunable(self):
+        pass
+
+    def get_info(self):
+        in_ch = []
+        for node in self.nodes:
+            if isinstance(node, ConcatNode):
+                in_ch.append(node.in_ch // node.ratio)
+                continue
+            in_ch.append(node.get_channels()[0])
+        in_ch = list(set(in_ch))
+        assert len(in_ch) == 1, f"in_ch: {in_ch}"
+        return in_ch[0]
+
+    def prune(self, prune_idx):
+        if isinstance(prune_idx, list):
+            for node, count in zip(self.nodes, range(len(prune_idx))):
+                node.prune(prune_idx[count], 0)
+        else:
+            super().prune(prune_idx, 0)
