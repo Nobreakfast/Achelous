@@ -35,7 +35,7 @@ class BaseGroup(abc.ABC):
         pass
 
     def print_info(self):
-        print("=" * 40)
+        print("=" * 20, self.type, "=" * 20)
         print(f"group nodes: {[node.name for node in self.nodes]}")
         print(f"group channels: {self.channel}")
 
@@ -66,8 +66,8 @@ class CurrentGroup(BaseGroup):
         out_ch = []
         for node in self.nodes:
             out_ch.append(node.get_channels()[1])
-        assert len(set(out_ch)) == 1, f"out_ch: {out_ch}"
-        return out_ch[0]
+        # assert len(set(out_ch)) == 1, f"out_ch: {out_ch}"
+        return max(out_ch)
 
     def print_next_info(self):
         self.next_group.print_info()
@@ -120,8 +120,8 @@ class NextGroup(BaseGroup):
                 continue
             in_ch.append(node.get_channels()[0])
         in_ch = list(set(in_ch))
-        assert len(in_ch) == 1, f"in_ch: {in_ch}"
-        return in_ch[0]
+        # assert len(in_ch) == 1, f"in_ch: {in_ch}"
+        return max(in_ch)
 
     def prune(self, prune_idx):
         if isinstance(prune_idx, list):

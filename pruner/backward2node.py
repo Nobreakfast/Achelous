@@ -90,7 +90,7 @@ def __find_next_keynode(node_list):
     for node in node_list:
         if node.node_type in ["in_out", "in_in", "remap", "reshape", "dummy"]:
             keynode.append(node)
-        elif node.node_type in ["out_out"]:
+        elif node.node_type in ["out_out", "activation", "pool"]:
             keynode.append(node)
             keynode.extend(__find_next_keynode(node.next))
     return keynode
@@ -101,7 +101,7 @@ def __find_prev_keynode(node_list):
     for node in node_list:
         if node.node_type in ["in_out", "in_in", "remap", "reshape", "dummy"]:
             keynode.append(node)
-        elif node.node_type in ["out_out"]:
+        elif node.node_type in ["out_out", "activation", "pool"]:
             keynode.append(node)
             keynode.extend(__find_prev_keynode(node.prev))
     return keynode
@@ -175,7 +175,7 @@ def __backward2node(
             elif g_name == "SubBackward0":
                 node_dict[g_key] = SubNode(g_key)
             elif g_name == "ReluBackward0":
-                node_dict[g_key] = DummyNode(g_key)
+                node_dict[g_key] = ActiNode(g_key)
             elif g_name == "CppBackward0":
                 pass
             elif g_name == "MulBackward0":
@@ -348,16 +348,11 @@ if __name__ == "__main__":
 
     groups = __get_groups(node_dict)
     # print groups
-    print("=" * 10, "Groups", "=" * 10)
+    print("=" * 10, "Groups & Next", "=" * 10)
     for g in groups:
         g.print_info()
-    print("=" * 10, "Groups", "=" * 10)
-
-    # print next groups
-    print("=" * 10, "Next Groups", "=" * 10)
-    for g in groups:
         g.print_next_info()
-    print("=" * 10, "Next Groups", "=" * 10)
+    print("=" * 10, "Groups & Next", "=" * 10)
 
     print("=" * 10, "Prune Groups", "=" * 10)
     groups.reverse()
@@ -365,10 +360,10 @@ if __name__ == "__main__":
         g.prune()
     print("=" * 10, "Prune Groups", "=" * 10)
 
-    print("=" * 10, "Prune Index", "=" * 10)
-    for node in node_dict.values():
-        print(node.name, node.prune_idx)
-    print("=" * 10, "Prune Index", "=" * 10)
+    # print("=" * 10, "Prune Index", "=" * 10)
+    # for node in node_dict.values():
+    #     print(node.name, node.prune_idx)
+    # print("=" * 10, "Prune Index", "=" * 10)
 
     print("=" * 10, "Pruning take effect", "=" * 10)
     for node in node_dict.values():
@@ -382,9 +377,9 @@ if __name__ == "__main__":
     print("=" * 10, "Print Nodes", "=" * 10)
 
     print("=" * 10, "Print Model", "=" * 10)
-    for module in model.modules():
+    for name, module in model.named_modules():
         if isinstance(module, (nn.Conv2d, nn.BatchNorm2d, nn.Linear)):
-            print(module)
+            print(name, module)
     print("=" * 10, "Print Model", "=" * 10)
 
     example_input = torch.randn(1, 3, 4, 4)

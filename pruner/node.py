@@ -14,6 +14,8 @@ params:
         "remap": remap the feature map, such as concat, split, pooling, add (special case), mul, mm
         "reshape": reshape a layer, such as flatten
         "dummy": dummy node, such as output1, output2
+        "activation": activation function, such as relu, sigmoid, tanh
+        "pool": pooling function, such as maxpool, avgpool
 """
 
 
@@ -283,6 +285,17 @@ class DummyNode(BaseNode):
 
 
 #########################
+####### ActiNode ########
+#########################
+class ActiNode(BaseNode):
+    def __init__(self, name: str) -> None:
+        super().__init__(name, None, "activation")
+
+    def execute(self):
+        pass
+
+
+#########################
 ###### RemapNode ########
 #########################
 class RemapNode(BaseNode):
@@ -365,8 +378,19 @@ class SplitNode(RemapNode):
                 self.prune_idx[1].append(prune_idx[start:end] - i * self.out_ch)
 
 
+#########################
+######## PoolNode########
+#########################
+class PoolNode(BaseNode):
+    def __init__(self, name: str) -> None:
+        super().__init__(name, None, "pool")
+
+    def execute(self):
+        pass
+
+
 ###### AvgPoolNode ########
-class AvgPoolNode(RemapNode):
+class AvgPoolNode(PoolNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
 
@@ -376,7 +400,7 @@ class AvgPoolNode(RemapNode):
 
 
 ###### AdaptiveAvgPoolNode ########
-class AdaptiveAvgPoolNode(RemapNode):
+class AdaptiveAvgPoolNode(PoolNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
 
@@ -386,7 +410,7 @@ class AdaptiveAvgPoolNode(RemapNode):
 
 
 ###### MaxPoolNode ########
-class MaxPoolNode(RemapNode):
+class MaxPoolNode(PoolNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
 
@@ -411,8 +435,10 @@ class FlattenNode(ReshapeNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
 
-    def get_channels(self):
-        return 0, 0
+    def prune(self, prune_idx, dim):
+        if dim == 0:
+            self.prune_idx[0] = prune_idx
+            self.prune_idx[1] = prune_idx
 
 
 ########################
