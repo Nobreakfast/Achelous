@@ -504,3 +504,15 @@ class DeformableNode(InOutNode):
 
     def execute(self):
         pass
+
+
+###### MobileVitNode ########
+class MobileVitNode(InOutNode):
+    def __init__(self, name: str, module) -> None:
+        super().__init__(name, module)
+
+    def get_channels(self):
+        return 0, 0
+
+    def execute(self):
+        pass

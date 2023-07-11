@@ -6,6 +6,7 @@ from node import *
 from group import *
 import torchvision.models as models
 import mvit
+from test_model import *
 
 CONV_TYPE = (
     nn.Conv1d,
@@ -158,10 +159,7 @@ def __init_dict_and_list(output):
     return node_dict, grad_list, total_sum
 
 
-def __backward2node(
-    model,
-    example_input,
-):
+def __backward2node(model, example_input):
     # get module2key
     module2key = {}
     for name, mod in model.named_modules():
@@ -292,58 +290,73 @@ def __get_groups(node_dict):
     return groups
 
 
+def __find_prev_nonignore(node, ignore_key):
+    ink = []
+    prev = []
+    len_ignore_key = len(ignore_key)
+    for p in node.prev:
+        if p.name[:len_ignore_key] == ignore_key:
+            ink.append(p)
+            tmp_ink, tmp_prev = __find_prev_nonignore(p, ignore_key)
+            ink.extend(tmp_ink)
+            prev.extend(tmp_prev)
+        else:
+            prev.extend(prev)
+            p.next.remove(node) if node in p.next else None
+    return ink, prev
+
+
+def __find_next_nonignore(node, ignore_key):
+    ink = []
+    next = []
+    len_ignore_key = len(ignore_key)
+    for n in node.next:
+        if n.name[:len_ignore_key] == ignore_key:
+            ink.append(n)
+            tmp_ink, tmp_next = __find_next_nonignore(n, ignore_key)
+            ink.extend(tmp_ink)
+            next.extend(tmp_next)
+        else:
+            next.extend(next)
+            n.prev.remove(node) if node in n.prev else None
+    return ink, next
+
+
 def main():
-    class ExampleModel(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.conv1 = nn.Conv2d(3, 8, 3, 1, 1)
-            self.bn1 = nn.BatchNorm2d(8)
-            self.conv2 = nn.Conv2d(4, 8, 3, 1, 1)
-            self.conv3 = nn.Conv2d(4, 8, 3, 1, 1)
-            self.bn23 = nn.BatchNorm2d(16)
-            self.conv4 = nn.Conv2d(16, 16, 3, 1, 1, groups=16)
-            self.bn4 = nn.BatchNorm2d(16)
-            self.conv5_1 = nn.Conv2d(16, 16, 3, 1, 1)
-            self.conv5_2 = nn.Conv2d(16, 16, 3, 1, 1)
-            self.identity = nn.Identity()
-            self.bn5i = nn.BatchNorm2d(16)
-            self.bn45 = nn.BatchNorm2d(32)
-            self.conv6 = nn.Conv2d(32, 1, 3, 1, 1)
-            self.bn6 = nn.BatchNorm2d(1)
-            # self.pool = nn.MaxPool2d(2, 2)
-            self.pool = nn.AvgPool2d(2, 2)
-            self.flat = nn.Flatten()
-            self.fc = nn.Linear(4, 10)
-
-        def forward(self, x):
-            x = self.conv1(x)
-            x = self.bn1(x)
-            x1, x2 = torch.chunk(x, 2, dim=1)
-            x1 = self.conv2(x1)
-            x2 = self.conv3(x2)
-            x = torch.cat([x1, x2], dim=1)
-            x = self.bn23(x)
-            identity = self.identity(x)
-            x1 = self.conv4(x)
-            x1 = self.bn4(x1)
-            x2 = self.conv5_1(x)
-            x2 = self.conv5_2(x2 + identity)
-            x2 = self.bn5i(x2)
-            x = torch.cat([x1, x2], dim=1)
-            x = self.bn45(x)
-            x = self.conv6(x)
-            x = self.bn6(x)
-            x = self.pool(x)
-            x = self.flat(x)
-            x = self.fc(x)
-            return x
-
-    # model = ExampleModel().eval()
+    # model = test_model.ExampleModel().eval()
     # model = models.resnet18().eval()
     model = mvit.mobilevit_xxs().eval()
     example_input = torch.randn(1, 3, 320, 320)
 
+    # ignored module type
+    imt = {mvit.Transformer: MobileVitNode}
+    # get ignored module keys
+    imk = {}
+    for name, mod in model.named_modules():
+        for im_type in imt.keys():
+            if isinstance(mod, im_type):
+                imk[name] = {"module": mod, "node_type": imt[im_type]}
+
     node_dict, module2key = __backward2node(model, example_input)
+
+    # merge the node_dict
+    for ignore_key in imk:
+        for node_key in node_dict.keys():
+            if node_key[: len(ignore_key)] == ignore_key:
+                break
+        ink1, prev = __find_prev_nonignore(node_dict[node_key], ignore_key)
+        ink2, next = __find_next_nonignore(node_dict[node_key], ignore_key)
+        for nk in list(set(ink1 + ink2)):
+            node_dict.pop(nk.name)
+        new_module = imk[ignore_key]["module"]
+        new_node = imk[ignore_key]["node_type"]
+        node_dict[ignore_key] = new_node(ignore_key, new_module)
+        node_dict[ignore_key].prev = list(set(prev))
+        node_dict[ignore_key].next = list(set(next))
+        for p in prev:
+            p.next.append(node_dict[ignore_key])
+        for n in next:
+            n.prev.append(node_dict[ignore_key])
 
     groups = __get_groups(node_dict)
     # print groups
