@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from node import *
 from group import *
+import torchvision.models as models
+import mvit
 
 CONV_TYPE = (
     nn.Conv1d,
@@ -26,6 +28,19 @@ NORM_TYPE = (
 POOLING_BACKWARD_TYPE = [
     "MaxPool2DWithIndicesBackward0",
     "AvgPool2DBackward0",
+]
+ACTIVITION_BACKWARD_TYPE = [
+    "ReluBackward0",
+    "SiluBackward0",
+    "SigmoidBackward0",
+    "TanhBackward0",
+    "SoftmaxBackward0",
+    "LogSoftmaxBackward0",
+    # not activation, but plays the same role
+    "CloneBackward0",
+    "UnsafeViewBackward0",
+    "ViewBackward0",
+    "BmmBackward0",
 ]
 
 IGNORE_BACKWARD_TYPE = (
@@ -107,13 +122,46 @@ def __find_prev_keynode(node_list):
     return keynode
 
 
+def __sum_output(output, count):
+    total_sum = 0
+    if isinstance(output, (list, tuple)):
+        for o in output:
+            o_total_sum, count = __sum_output(o, count)
+            total_sum += o_total_sum
+    elif isinstance(output, torch.Tensor):
+        total_sum += output.sum()
+        count += 1
+    return total_sum, count
+
+
+def __init_dict_and_list(output):
+    total_sum, count = __sum_output(output, 0)
+    node_dict = {}
+    grad_list = []
+    grad = total_sum.grad_fn
+    check_list = [grad]
+    i = 0
+    while i < count:
+        grad = check_list[0].next_functions
+        check_list.remove(check_list[0])
+        for sub_g in grad:
+            if sub_g[0].__class__.__name__ == "SumBackward0":
+                node_dict[f"output_{i}"] = DummyNode(f"output_{i}")
+                grad_list.append(
+                    [node_dict[f"output_{i}"], sub_g[0].next_functions[0][0], 0]
+                )
+                i += 1
+            elif sub_g[0].__class__.__name__ == "AddBackward0":
+                check_list.append(sub_g[0])
+    for i in grad_list:
+        print(i[0].name, i[1])
+    return node_dict, grad_list, total_sum
+
+
 def __backward2node(
     model,
     example_input,
 ):
-    # init node_dict
-    node_dict = {"output": DummyNode("output")}
-
     # get module2key
     module2key = {}
     for name, mod in model.named_modules():
@@ -124,15 +172,18 @@ def __backward2node(
     hooks = register_forward_hooks(model, hook)
 
     output = model(example_input)
-    loss = output.sum()
-    loss.backward()
+
+    # init node_dict
+    # node_dict = {"output": DummyNode("output")}
+    # grad_list = [[node_dict["output"], output.grad_fn, 0]]
+    node_dict, grad_list, output_sum = __init_dict_and_list(output)
+    output_sum.backward()
 
     # remove hook
     for h in hooks:
         h.remove()
 
     print("=" * 10, "Insert Relation", "=" * 10) if DEBUG else None
-    grad_list = [[node_dict["output"], output.grad_fn, 0]]
     checked_list = []
     backward2key_dict = {}
     while len(grad_list) > 0:
@@ -161,10 +212,18 @@ def __backward2node(
                 node_dict[g_key] = LinearNode(g_key, grad.metadata["module"])
             elif g_name == "ReshapeAliasBackward0":
                 node_dict[g_key] = FlattenNode(g_key)
+            elif g_name == "PermuteBackward0":
+                node_dict[g_key] = PermuteNode(g_key)
+            elif g_name == "ExpandBackward0":
+                node_dict[g_key] = ExpandNode(g_key)
+            elif g_name == "TransposeBackward0":
+                node_dict[g_key] = TransposeNode(g_key)
             elif g_name == "MeanBackward1":
                 node_dict[g_key] = AdaptiveAvgPoolNode(g_key)
             elif g_name == "NativeBatchNormBackward0":
                 node_dict[g_key] = NormNode(g_key, grad.metadata["module"])
+            elif g_name == "NativeLayerNormBackward0":
+                node_dict[g_key] = LayerNormNode(g_key, grad.metadata["module"])
             elif g_name == "CatBackward0":
                 node_dict[g_key] = ConcatNode(g_key)
             elif g_name == "SplitBackward0":
@@ -174,7 +233,7 @@ def __backward2node(
                 node_dict[g_key] = AddNode(g_key)
             elif g_name == "SubBackward0":
                 node_dict[g_key] = SubNode(g_key)
-            elif g_name == "ReluBackward0":
+            elif g_name in ACTIVITION_BACKWARD_TYPE:
                 node_dict[g_key] = ActiNode(g_key)
             elif g_name == "CppBackward0":
                 pass
@@ -233,66 +292,7 @@ def __get_groups(node_dict):
     return groups
 
 
-# def __prune_group_ori(group, next_group):
-#     ignore_list = []
-#     for ng in next_group:
-#         if ng.name[:6] == "output":
-#             print("output node is in next_group, cannot prune") if DEBUG else None
-#             return ignore_list
-#     out_channels = [
-#         m.out_ch for m in group if m.node_type in ["in_out", "out_out", "remap"]
-#     ]
-#     print(out_channels) if DEBUG else None
-#     if len(out_channels) == 0:
-#         print("no output to prune") if DEBUG else None
-#         return ignore_list
-
-#     round_to = 1
-#     split = 1
-#     for next_node in next_group:
-#         if next_node.name[-4:] == "Spli":
-#             split = next_node.in_ch // next_node.out_ch
-#             round_to = next_node.in_ch // next_node.out_ch
-#             print("split", split) if DEBUG else None
-#     prune_num = int(math.floor(out_channels[0] * 0.7 / round_to / split) * round_to)
-#     prune_idx = torch.randperm(out_channels[0] // split)[:prune_num]
-#     prune_idx = torch.cat([prune_idx + i * out_channels[0] for i in range(split)])
-#     for node in group:
-#         print("=" * 5, "pruning", node.name, "=" * 5) if DEBUG else None
-#         if node.node_type in ["in_out", "out_out"]:
-#             node.add_idx(prune_idx, 0)
-#         if node.node_type == "out_out":
-#             continue
-#         if node.node_type == "remap":
-#             ignore_list.append(node)
-#             continue
-#         for next_node in node.next:
-#             print("=" * 2, "pruning next", next_node.name, "=" * 2)
-#             if next_node.node_type in ["in_out", "remap"]:
-#                 next_node.add_idx(prune_idx, 1)
-#             else:
-#                 continue
-#             print(next_node.name, next_node.out_count) if DEBUG else None
-#     return ignore_list
-
-
-# def __prune_next_group(ignore_list):
-#     for node in ignore_list:
-#         print("=" * 5, "pruning", node.name, "=" * 5) if DEBUG else None
-#         prune_idx = node.prune_idx[1]
-#         if isinstance(node, SplitNode):
-#             prune_idx = node.prune_idx[1][: node.in_ch // node.out_ch]
-#         for next_node in node.next:
-#             print("=" * 2, "pruning next", next_node.name, "=" * 2)
-#             if next_node.node_type in ["in_out", "remap"]:
-#                 next_node.add_idx(prune_idx, 1)
-#             else:
-#                 continue
-#             print(next_node.name, next_node.out_count) if DEBUG else None
-
-
-if __name__ == "__main__":
-
+def main():
     class ExampleModel(nn.Module):
         def __init__(self) -> None:
             super().__init__()
@@ -338,11 +338,10 @@ if __name__ == "__main__":
             x = self.fc(x)
             return x
 
-    model = ExampleModel()
-    import torchvision.models as models
-
-    model = models.resnet18().eval()
-    example_input = torch.randn(1, 3, 4, 4)
+    # model = ExampleModel().eval()
+    # model = models.resnet18().eval()
+    model = mvit.mobilevit_xxs().eval()
+    example_input = torch.randn(1, 3, 320, 320)
 
     node_dict, module2key = __backward2node(model, example_input)
 
@@ -384,3 +383,7 @@ if __name__ == "__main__":
 
     example_input = torch.randn(1, 3, 4, 4)
     model(example_input)
+
+
+if __name__ == "__main__":
+    main()

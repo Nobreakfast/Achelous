@@ -253,6 +253,21 @@ class NormNode(OutOutNode):
         self.module.running_var = self.module.running_var.data[self.saved_idx]
 
 
+####### LayerNormNode ########
+class LayerNormNode(OutOutNode):
+    def __init__(self, name: str, module) -> None:
+        super().__init__(name, module)
+
+    def get_channels(self):
+        return self.module.normalized_shape[0], self.module.normalized_shape[0]
+
+    def execute(self):
+        self.module.normalized_shape = (self.in_ch - len(self.prune_idx[0]),)
+        self._prune_weight()
+        self.module.running_mean = self.module.running_mean.data[self.saved_idx]
+        self.module.running_var = self.module.running_var.data[self.saved_idx]
+
+
 ####### GroupConvNode ########
 class GroupConvNode(OutOutNode):
     def __init__(self, name: str, module) -> None:
@@ -432,6 +447,39 @@ class ReshapeNode(BaseNode):
 
 ###### FlattenNode ######
 class FlattenNode(ReshapeNode):
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+
+    def prune(self, prune_idx, dim):
+        if dim == 0:
+            self.prune_idx[0] = prune_idx
+            self.prune_idx[1] = prune_idx
+
+
+###### PermuteNode ######
+class PermuteNode(ReshapeNode):
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+
+    def prune(self, prune_idx, dim):
+        if dim == 0:
+            self.prune_idx[0] = prune_idx
+            self.prune_idx[1] = prune_idx
+
+
+###### ExpandNode #######
+class ExpandNode(ReshapeNode):
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+
+    def prune(self, prune_idx, dim):
+        if dim == 0:
+            self.prune_idx[0] = prune_idx
+            self.prune_idx[1] = prune_idx
+
+
+###### TransposeNode #######
+class TransposeNode(ReshapeNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
 
