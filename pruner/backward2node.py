@@ -8,7 +8,12 @@ import torchvision.models as models
 import mvit
 from test_model import *
 
-from thop import profile
+from thop import profile, clever_format
+
+# from nets.Achelous import Achelous3T
+# import backbone.attention_modules.shuffle_attention as sa
+# import backbone.radar.RadarEncoder as re
+import torch_pruning as tp
 
 CONV_TYPE = (
     nn.Conv1d,
@@ -312,7 +317,7 @@ def __backward2node(model, example_input, imt_dict):
         node.next = __find_next_keynode(node.next)
         node.prev = __find_prev_keynode(node.prev)
     print("=" * 10, "Insert Relation", "=" * 10) if DEBUG else None
-    return node_dict, module2key
+    return node_dict
 
 
 def __get_groups(node_dict):
@@ -354,41 +359,22 @@ def __test_speed(model, example_input):
 
 
 def main():
-    device = torch.device("cuda:0")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # model = test_model.ExampleModel().eval()
     # model = models.resnet18().eval()
     model = mvit.mobilevit_xxs().to(device).eval()
     example_input = torch.randn(1, 3, 320, 320).to(device)
     flops, params = profile(model, inputs=(example_input,))
-    print(f"FLOPs: {flops}, Params: {params}")
-    example_input = torch.randn(128, 3, 320, 320).to(device)
-    __test_speed(model, example_input)
+    print(clever_format([flops, params], "%.3f"))
+    # example_input = torch.randn(128, 3, 320, 320).to(device)
+    # __test_speed(model, example_input)
     model.cpu()
     example_input = example_input.cpu()
 
     # ignored module type
     imt_dict = {mvit.Transformer: MVitNode}
 
-    node_dict, module2key = __backward2node(model, example_input, imt_dict)
-
-    # merge the node_dict
-    # for ignore_key in imk:
-    #     for node_key in node_dict.keys():
-    #         if node_key[: len(ignore_key)] == ignore_key:
-    #             break
-    #     ink1, prev = __find_prev_nonignore(node_dict[node_key], ignore_key)
-    #     ink2, next = __find_next_nonignore(node_dict[node_key], ignore_key)
-    #     for nk in list(set(ink1 + ink2)):
-    #         node_dict.pop(nk.name)
-    #     new_module = imk[ignore_key]["module"]
-    #     new_node = imk[ignore_key]["node_type"]
-    #     node_dict[ignore_key] = new_node(ignore_key, new_module)
-    #     node_dict[ignore_key].prev = list(set(prev))
-    #     node_dict[ignore_key].next = list(set(next))
-    #     for p in prev:
-    #         p.next.append(node_dict[ignore_key])
-    #     for n in next:
-    #         n.prev.append(node_dict[ignore_key])
+    node_dict = __backward2node(model, example_input, imt_dict)
 
     groups = __get_groups(node_dict)
     # print groups
@@ -410,25 +396,13 @@ def main():
         node.execute()
     print("=" * 10, "Pruning take effect", "=" * 10) if DEBUG else None
 
-    # print("=" * 10, "Print Nodes", "=" * 10)
-    # for node in node_dict.values():
-    #     if isinstance(node, (InOutNode, OutOutNode)):
-    #         print(node.name, node.module)
-    # print("=" * 10, "Print Nodes", "=" * 10)
-
-    # print("=" * 10, "Print Model", "=" * 10)
-    # for name, module in model.named_modules():
-    #     if isinstance(module, (nn.Conv2d, nn.BatchNorm2d, nn.Linear)):
-    #         print(name, module)
-    # print("=" * 10, "Print Model", "=" * 10)
-
     model.to(device)
     example_input = torch.randn(1, 3, 320, 320).to(device)
     model(example_input)
     flops, params = profile(model, inputs=(example_input,))
-    print(f"FLOPs: {flops}, Params: {params}")
-    example_input = torch.randn(128, 3, 320, 320).to(device)
-    __test_speed(model, example_input)
+    print(clever_format([flops, params], "%.3f"))
+    # example_input = torch.randn(128, 3, 320, 320).to(device)
+    # __test_speed(model, example_input)
 
 
 if __name__ == "__main__":

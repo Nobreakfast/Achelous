@@ -18,6 +18,7 @@ import torch_pruning as tp
 
 import backbone.attention_modules.shuffle_attention as sa
 import backbone.radar.RadarEncoder as re
+import backbone.vision.mobilevit_modules.mobilevit as mv
 from torchinfo import summary
 import time
 
@@ -51,15 +52,14 @@ def test2():
     imp = tp.importance.TaylorImportance()
 
     ignored_layers = []
-    ignored_layers_type = [sa.ShuffleAttention, re.RadarConv]
-    for m in model.modules():
-        if isinstance(m, tuple(ignored_layers_type)):
-            ignored_layers.append(m)
-        if isinstance(m, sa.ShuffleAttention):
-            ignored_layers.append(m.cweight)
-            ignored_layers.append(m.sweight)
-            ignored_layers.append(m.cbias)
-            ignored_layers.append(m.sbias)
+    ignored_layers_type = [
+        sa.ShuffleAttention,
+        re.RadarConv,
+        mv.Attention,
+    ]
+    for i in model.modules():
+        if isinstance(i, tuple(ignored_layers_type)):
+            ignored_layers.append(i)
 
     for m in model.modules():
         if isinstance(m, torch.nn.Linear) and m.out_features == 1000:
@@ -109,8 +109,9 @@ def __print_shape(output):
         for i in output:
             __print_shape(i)
 
+
 def __test_fps(model, example_input, device):
-    #device = torch.device("cpu")
+    # device = torch.device("cpu")
     model.to(device).eval()
     with torch.no_grad():
         example_input = [i.to(device) for i in example_input]
@@ -123,6 +124,7 @@ def __test_fps(model, example_input, device):
         t2 = time.time()
         print("fps:", (1 / ((t2 - t1) / epoch)))
     model.cpu()
+
 
 def test1():
     model = Achelous3T(
@@ -174,7 +176,7 @@ def test1():
         ):
             if k[-11:] == "offset_conv" or k[-14:] == "modulator_conv":
                 il[0].append(k)
-    
+
     il[0].append("image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1")
     # il[0].remove("image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv2")
 
@@ -202,11 +204,11 @@ def test1():
     # summary(model_new, input_size=[(1,3,320,320), (1,3,320,320)])
     __test_fps(model_new, example_input, torch.device("cuda:0"))
 
-    #__print_shape(output)
+    # __print_shape(output)
     # print(model_new)
     return model_new
 
 
 if __name__ == "__main__":
-    test1()
-    # test2()
+    # test1()
+    test2()

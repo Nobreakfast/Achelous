@@ -497,7 +497,7 @@ class MVitNode(OutOutNode):
 
             self._prune_param(attn.fn.to_qkv.weight, self.saved_idx, 1)
             attn.fn.to_qkv.in_features = len(self.saved_idx)
-            # TODO prune_to_out output
+            # prune_to_out output
             if isinstance(attn.fn.to_out, nn.Identity):
                 pass
             else:
@@ -505,7 +505,7 @@ class MVitNode(OutOutNode):
                 if attn.fn.to_out[0].bias is not None:
                     self._prune_param(attn.fn.to_out[0].bias, self.saved_idx, 0)
                 attn.fn.to_out[0].out_features = len(self.saved_idx)
-            # TODO prune norm ff input
+            # prune norm ff input
             self._prune_param(ff.norm.weight, self.saved_idx, 0)
             self._prune_param(ff.norm.bias, self.saved_idx, 0)
             ff.norm.normalized_shape = (len(self.saved_idx),)
