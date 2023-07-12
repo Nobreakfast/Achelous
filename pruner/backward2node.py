@@ -354,13 +354,17 @@ def __test_speed(model, example_input):
 
 
 def main():
+    device = torch.device("cuda:0")
     # model = test_model.ExampleModel().eval()
     # model = models.resnet18().eval()
-    model = mvit.mobilevit_xxs().eval()
-    example_input = torch.randn(1, 3, 320, 320)
+    model = mvit.mobilevit_xxs().to(device).eval()
+    example_input = torch.randn(1, 3, 320, 320).to(device)
     flops, params = profile(model, inputs=(example_input,))
     print(f"FLOPs: {flops}, Params: {params}")
+    example_input = torch.randn(128, 3, 320, 320).to(device)
     __test_speed(model, example_input)
+    model.cpu()
+    example_input = example_input.cpu()
 
     # ignored module type
     imt_dict = {mvit.Transformer: MVitNode}
@@ -418,9 +422,12 @@ def main():
     #         print(name, module)
     # print("=" * 10, "Print Model", "=" * 10)
 
+    model.to(device)
+    example_input = torch.randn(1, 3, 320, 320).to(device)
     model(example_input)
     flops, params = profile(model, inputs=(example_input,))
     print(f"FLOPs: {flops}, Params: {params}")
+    example_input = torch.randn(128, 3, 320, 320).to(device)
     __test_speed(model, example_input)
 
 
