@@ -95,7 +95,7 @@ class CurrentGroup(BaseGroup):
         )
         for node in self.nodes:
             if node.prune_idx[1] != []:
-                print("=" * 20, "node:", node.name)
+                # print("=" * 20, "node:", node.name)
                 prune_idx = node.prune_idx[1]
                 break
         super().prune(prune_idx, 1)

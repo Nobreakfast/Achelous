@@ -8,6 +8,8 @@ import torchvision.models as models
 import mvit
 from test_model import *
 
+from thop import profile
+
 CONV_TYPE = (
     nn.Conv1d,
     nn.Conv2d,
@@ -49,7 +51,7 @@ IGNORE_BACKWARD_TYPE = (
     "TBackward0",
     "NoneType",
 )
-DEBUG = True
+DEBUG = False
 
 """
 START
@@ -317,7 +319,7 @@ def __get_groups(node_dict):
     checked_list = list(node_dict.keys())
     groups = []
     while checked_list:
-        print("=" * 10, "checked_list", checked_list)
+        print("=" * 10, "checked_list", checked_list) if DEBUG else None
         node_name = checked_list[0]
         node = node_dict[node_name]
         if not node.key:
@@ -329,7 +331,7 @@ def __get_groups(node_dict):
                 if kn.key:
                     group.append(kn)
         group = CurrentGroup(list(set(group)))
-        print("=" * 5, "group", [g.name for g in group.nodes])
+        print("=" * 5, "group", [g.name for g in group.nodes]) if DEBUG else None
         for n in group.nodes:
             print("remove", n.name) if DEBUG else None
             checked_list.remove(n.name)
@@ -337,36 +339,18 @@ def __get_groups(node_dict):
     return groups
 
 
-# def __find_prev_nonignore(node, ignore_key):
-#     ink = []
-#     prev = []
-#     len_ignore_key = len(ignore_key)
-#     for p in node.prev:
-#         if p.name[:len_ignore_key] == ignore_key:
-#             ink.append(p)
-#             tmp_ink, tmp_prev = __find_prev_nonignore(p, ignore_key)
-#             ink.extend(tmp_ink)
-#             prev.extend(tmp_prev)
-#         else:
-#             prev.extend(prev)
-#             p.next.remove(node) if node in p.next else None
-#     return ink, prev
+@torch.no_grad()
+def __test_speed(model, example_input):
+    epoch = 300
+    for i in range(epoch):
+        model(example_input)
+    import time
 
-
-# def __find_next_nonignore(node, ignore_key):
-#     ink = []
-#     next = []
-#     len_ignore_key = len(ignore_key)
-#     for n in node.next:
-#         if n.name[:len_ignore_key] == ignore_key:
-#             ink.append(n)
-#             tmp_ink, tmp_next = __find_next_nonignore(n, ignore_key)
-#             ink.extend(tmp_ink)
-#             next.extend(tmp_next)
-#         else:
-#             next.extend(next)
-#             n.prev.remove(node) if node in n.prev else None
-#     return ink, next
+    start = time.time()
+    for i in range(epoch):
+        model(example_input)
+    end = time.time()
+    print(f"time: {(end - start) / epoch/ 1e-3} ms")
 
 
 def main():
@@ -374,15 +358,12 @@ def main():
     # model = models.resnet18().eval()
     model = mvit.mobilevit_xxs().eval()
     example_input = torch.randn(1, 3, 320, 320)
+    flops, params = profile(model, inputs=(example_input,))
+    print(f"FLOPs: {flops}, Params: {params}")
+    __test_speed(model, example_input)
 
     # ignored module type
     imt_dict = {mvit.Transformer: MVitNode}
-    # get ignored module keys
-    # imk = {}
-    # for name, mod in model.named_modules():
-    #     for im_type in imt.keys():
-    #         if isinstance(mod, im_type):
-    #             imk[name] = {"module": mod, "node_type": imt[im_type]}
 
     node_dict, module2key = __backward2node(model, example_input, imt_dict)
 
@@ -407,27 +388,23 @@ def main():
 
     groups = __get_groups(node_dict)
     # print groups
-    print("=" * 10, "Groups & Next", "=" * 10)
-    for g in groups:
-        g.print_info()
-        g.print_next_info()
-    print("=" * 10, "Groups & Next", "=" * 10)
+    if DEBUG:
+        print("=" * 10, "Groups & Next", "=" * 10)
+        for g in groups:
+            g.print_info()
+            g.print_next_info()
+        print("=" * 10, "Groups & Next", "=" * 10)
 
-    print("=" * 10, "Prune Groups", "=" * 10)
+    print("=" * 10, "Prune Groups", "=" * 10) if DEBUG else None
     groups.reverse()
     for g in groups:
         g.prune()
-    print("=" * 10, "Prune Groups", "=" * 10)
+    print("=" * 10, "Prune Groups", "=" * 10) if DEBUG else None
 
-    # print("=" * 10, "Prune Index", "=" * 10)
-    # for node in node_dict.values():
-    #     print(node.name, node.prune_idx)
-    # print("=" * 10, "Prune Index", "=" * 10)
-
-    print("=" * 10, "Pruning take effect", "=" * 10)
+    print("=" * 10, "Pruning take effect", "=" * 10) if DEBUG else None
     for node in node_dict.values():
         node.execute()
-    print("=" * 10, "Pruning take effect", "=" * 10)
+    print("=" * 10, "Pruning take effect", "=" * 10) if DEBUG else None
 
     # print("=" * 10, "Print Nodes", "=" * 10)
     # for node in node_dict.values():
@@ -441,8 +418,10 @@ def main():
     #         print(name, module)
     # print("=" * 10, "Print Model", "=" * 10)
 
-    example_input = torch.randn(1, 3, 320, 320)
     model(example_input)
+    flops, params = profile(model, inputs=(example_input,))
+    print(f"FLOPs: {flops}, Params: {params}")
+    __test_speed(model, example_input)
 
 
 if __name__ == "__main__":
