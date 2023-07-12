@@ -68,9 +68,6 @@ class BaseNode(abc.ABC):
                 print("=" * 6, index)
             self.out_count += 1
 
-    def set_key(self):
-        self.key = True
-
     def add_level(self, level):
         self.level = max(level, self.level)
 
@@ -82,6 +79,18 @@ class BaseNode(abc.ABC):
     def prune(self, prune_idx, dim):
         self.prune_idx[dim] = prune_idx
 
+    def _get_saved_idx(self, param, prune_idx, dim):
+        len_param = param.shape[dim]
+        saved_idx = torch.LongTensor(
+            [i for i in range(len_param) if i not in prune_idx]
+        )
+        return saved_idx
+
+    def _prune_param(self, param, saved_idx, dim):
+        param.data = torch.index_select(param.data, dim, saved_idx)
+        if param.grad is not None:
+            param.grad.data = torch.index_select(param.grad.data, dim, saved_idx)
+
 
 #########################
 ####### InOutNode #######
@@ -91,6 +100,7 @@ class InOutNode(BaseNode):
         super().__init__(name, module, "in_out")
         self.in_ch, self.out_ch = self.get_channels()
         self.saved_idx = [[], []]
+        self.key = True
 
     @abc.abstractmethod
     def get_channels(self):
@@ -101,35 +111,16 @@ class InOutNode(BaseNode):
         pass
 
     def _prune_weight(self):
-        self.saved_idx[0] = torch.LongTensor(
-            [i for i in range(self.in_ch) if i not in self.prune_idx[0]]
+        self.saved_idx[1] = self._get_saved_idx(
+            self.module.weight, self.prune_idx[1], 0
         )
-        self.saved_idx[1] = torch.LongTensor(
-            [i for i in range(self.out_ch) if i not in self.prune_idx[1]]
+        self.saved_idx[0] = self._get_saved_idx(
+            self.module.weight, self.prune_idx[0], 1
         )
-        self.module.weight = nn.Parameter(
-            torch.index_select(
-                torch.index_select(self.module.weight, 1, self.saved_idx[0]),
-                0,
-                self.saved_idx[1],
-            )
-        )
-        if self.module.weight.grad is not None:
-            self.module.weight.grad = nn.Parameter(
-                torch.index_select(
-                    torch.index_select(self.module.weight.grad, 1, self.saved_idx[0]),
-                    0,
-                    self.saved_idx[1],
-                )
-            )
+        self._prune_param(self.module.weight, self.saved_idx[1], 0)
+        self._prune_param(self.module.weight, self.saved_idx[0], 1)
         if self.module.bias is not None:
-            self.module.bias = nn.Parameter(
-                torch.index_select(self.module.bias, 0, self.saved_idx[1])
-            )
-            if self.module.bias.grad is not None:
-                self.module.bias.grad = nn.Parameter(
-                    torch.index_select(self.module.bias.grad, 0, self.saved_idx[1])
-                )
+            self._prune_param(self.module.bias, self.prune_idx[1], 0)
 
 
 ####### ConvNode #######
@@ -166,6 +157,7 @@ class LinearNode(InOutNode):
 class InInNode(BaseNode):
     def __init__(self, name: str) -> None:
         super().__init__(name, None, "in_in")
+        self.key = True
 
     def execute(self):
         pass
@@ -209,33 +201,10 @@ class OutOutNode(BaseNode):
         pass
 
     def _prune_weight(self):
-        self.saved_idx = torch.LongTensor(
-            [i for i in range(self.in_ch) if i not in self.prune_idx[0]]
-        )
-        self.module.weight = nn.Parameter(
-            torch.index_select(
-                self.module.weight,
-                0,
-                self.saved_idx,
-            )
-        )
-        if self.module.weight.grad is not None:
-            self.module.weight.grad = nn.Parameter(
-                torch.index_select(
-                    self.module.weight.grad,
-                    0,
-                    self.saved_idx,
-                )
-            )
-
+        self.saved_idx = self._get_saved_idx(self.module.weight, self.prune_idx[0], 0)
+        self._prune_param(self.module.weight, self.saved_idx, 0)
         if self.module.bias is not None:
-            self.module.bias = nn.Parameter(
-                torch.index_select(self.module.bias, 0, self.saved_idx)
-            )
-            if self.module.bias.grad is not None:
-                self.module.bias.grad = nn.Parameter(
-                    torch.index_select(self.module.bias.grad, 0, self.saved_idx)
-                )
+            self._prune_param(self.module.bias, self.saved_idx, 0)
 
 
 ####### NormNode ########
@@ -247,8 +216,8 @@ class NormNode(OutOutNode):
         return self.module.num_features, self.module.num_features
 
     def execute(self):
-        self.module.num_features = self.in_ch - len(self.prune_idx[0])
         self._prune_weight()
+        self.module.num_features = len(self.saved_idx)
         self.module.running_mean = self.module.running_mean.data[self.saved_idx]
         self.module.running_var = self.module.running_var.data[self.saved_idx]
 
@@ -262,10 +231,7 @@ class LayerNormNode(OutOutNode):
         return self.module.normalized_shape[0], self.module.normalized_shape[0]
 
     def execute(self):
-        self.module.normalized_shape = (self.in_ch - len(self.prune_idx[0]),)
         self._prune_weight()
-        self.module.running_mean = self.module.running_mean.data[self.saved_idx]
-        self.module.running_var = self.module.running_var.data[self.saved_idx]
 
 
 ####### GroupConvNode ########
@@ -317,6 +283,7 @@ class RemapNode(BaseNode):
     def __init__(self, name: str) -> None:
         super().__init__(name, None, "remap")
         self.ratio = 1  # record the concat and split ratio
+        self.key = True
 
     def add_idx(self, index, dim):
         if self.in_ch == 0 and self.out_ch == 0:
@@ -440,6 +407,7 @@ class MaxPoolNode(PoolNode):
 class ReshapeNode(BaseNode):
     def __init__(self, name: str) -> None:
         super().__init__(name, None, "reshape")
+        self.key = True
 
     def execute(self):
         pass
@@ -506,13 +474,46 @@ class DeformableNode(InOutNode):
         pass
 
 
-###### MobileVitNode ########
-class MobileVitNode(InOutNode):
+######## MVitNode ########
+class MVitNode(OutOutNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module)
 
     def get_channels(self):
-        return 0, 0
+        return (
+            self.module.layers[0][0].norm.normalized_shape[0],
+            self.module.layers[0][1].fn.net[3].out_features,
+        )
 
     def execute(self):
-        pass
+        self.saved_idx = self._get_saved_idx(
+            self.module.layers[0][0].fn.to_qkv.weight, self.prune_idx[0], 1
+        )
+        for attn, ff in self.module.layers:
+            # prune norm and to_qkv input
+            self._prune_param(attn.norm.weight, self.saved_idx, 0)
+            self._prune_param(attn.norm.bias, self.saved_idx, 0)
+            attn.norm.normalized_shape = (len(self.saved_idx),)
+
+            self._prune_param(attn.fn.to_qkv.weight, self.saved_idx, 1)
+            attn.fn.to_qkv.in_features = len(self.saved_idx)
+            # TODO prune_to_out output
+            if isinstance(attn.fn.to_out, nn.Identity):
+                pass
+            else:
+                self._prune_param(attn.fn.to_out[0].weight, self.saved_idx, 0)
+                if attn.fn.to_out[0].bias is not None:
+                    self._prune_param(attn.fn.to_out[0].bias, self.saved_idx, 0)
+                attn.fn.to_out[0].out_features = len(self.saved_idx)
+            # TODO prune norm ff input
+            self._prune_param(ff.norm.weight, self.saved_idx, 0)
+            self._prune_param(ff.norm.bias, self.saved_idx, 0)
+            ff.norm.normalized_shape = (len(self.saved_idx),)
+
+            self._prune_param(ff.fn.net[0].weight, self.saved_idx, 1)
+            ff.fn.net[0].in_features = len(self.saved_idx)
+            # prune ff output
+            self._prune_param(ff.fn.net[3].weight, self.saved_idx, 0)
+            if ff.fn.net[3].bias is not None:
+                self._prune_param(ff.fn.net[3].bias, self.saved_idx, 0)
+            ff.fn.net[3].out_features = len(self.saved_idx)

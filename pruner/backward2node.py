@@ -39,9 +39,9 @@ ACTIVITION_BACKWARD_TYPE = [
     "LogSoftmaxBackward0",
     # not activation, but plays the same role
     "CloneBackward0",
-    "UnsafeViewBackward0",
-    "ViewBackward0",
-    "BmmBackward0",
+    # "UnsafeViewBackward0",
+    # "ViewBackward0",
+    # "BmmBackward0",
 ]
 
 IGNORE_BACKWARD_TYPE = (
@@ -58,19 +58,33 @@ trace module from grad_fn
 """
 
 
-def hook(module, inputs, output):
+def forward_hook(module, input, output):
     if torch.is_tensor(output):
         if "module" not in output.grad_fn.metadata:
             output.grad_fn.metadata["module"] = module
         if "output" not in output.grad_fn.metadata:
             output.grad_fn.metadata["output"] = output
+        if "input" not in output.grad_fn.metadata:
+            output.grad_fn.metadata["input"] = input[0]
 
 
-def register_forward_hooks(model, hook):
+def ig_forward_hook(module, input, output):
+    if torch.is_tensor(output):
+        if "module" not in output.grad_fn.metadata:
+            output.grad_fn.metadata["ig_module"] = module
+        if "output" not in output.grad_fn.metadata:
+            output.grad_fn.metadata["output"] = output
+        if "input" not in output.grad_fn.metadata:
+            output.grad_fn.metadata["input"] = input[0]
+
+
+def register_forward_hooks(model, imt):
     hooks = []
     for name, mod in model.named_modules():
-        if not mod._modules:  # is a leaf module
-            hooks.append(mod.register_forward_hook(hook))
+        if isinstance(mod, tuple(imt)):
+            hooks.append(mod.register_forward_hook(ig_forward_hook))
+        elif not mod._modules:  # is a leaf module
+            hooks.append(mod.register_forward_hook(forward_hook))
     return hooks
 
 
@@ -159,15 +173,17 @@ def __init_dict_and_list(output):
     return node_dict, grad_list, total_sum
 
 
-def __backward2node(model, example_input):
+def __backward2node(model, example_input, imt_dict):
     # get module2key
     module2key = {}
     for name, mod in model.named_modules():
+        if isinstance(mod, tuple(imt_dict.keys())):
+            module2key[mod] = name
         if not mod._modules:  # is a leaf module
             module2key[mod] = name
 
     # register forward hook
-    hooks = register_forward_hooks(model, hook)
+    hooks = register_forward_hooks(model, imt_dict.keys())
 
     output = model(example_input)
 
@@ -191,9 +207,40 @@ def __backward2node(model, example_input):
             continue
         else:
             checked_list.append([last, grad])
+
+        # patches: for ignore layer
+        # if grad.metadata["input"] in ignore_layer["input"]:
+        #     grad_next = ignore_layer["grad"].metadata["input"].grad.next_functions
+        #     node_dict[g_key] = MobileVitNode(g_key, grad.metadata["module"])
+        #     node_dict[g_key].next.append(last)
+        #     node_dict[g_key].add_level(level)
+        #     last.prev.append(node_dict[g_key])
+        #     for sub_g in grad_next:
+        #         grad_list.append([node_dict[g_key], sub_g[0], level + 1])
+        #     continue
+
         g_name = grad.__class__.__name__
         if g_name in IGNORE_BACKWARD_TYPE:
             continue
+
+        if "ig_module" in grad.metadata.keys():
+            # the ignored module
+            if grad in backward2key_dict.keys():
+                g_key = backward2key_dict[grad]
+            else:
+                g_key = module2key[grad.metadata["ig_module"]]
+                node_dict[g_key] = imt_dict[type(grad.metadata["ig_module"])](
+                    g_key, grad.metadata["ig_module"]
+                )
+                backward2key_dict[grad] = g_key
+            node_dict[g_key].next.append(last)
+            node_dict[g_key].add_level(level)
+            last.prev.append(node_dict[g_key])
+            grad_next = grad.metadata["input"].grad_fn.next_functions
+            for sub_g in grad_next:
+                grad_list.append([node_dict[g_key], sub_g[0], level + 1])
+            continue
+
         if grad in backward2key_dict.keys():
             g_key = backward2key_dict[grad]
         else:
@@ -245,6 +292,9 @@ def __backward2node(model, example_input):
                 node_dict[g_key] = AvgPoolNode(g_key)
             else:
                 print(f"Not supported {g_name}, please add patches") if DEBUG else None
+                grad_next = grad.next_functions
+                for sub_g in grad_next:
+                    grad_list.append([last, sub_g[0], level + 1])
                 continue
             backward2key_dict[grad] = g_key
         # declare the relation
@@ -256,9 +306,6 @@ def __backward2node(model, example_input):
         grad_next = grad.next_functions
         for sub_g in grad_next:
             grad_list.append([node_dict[g_key], sub_g[0], level + 1])
-    for node in node_dict.values():
-        if node.node_type in ["in_out", "remap", "reshape", "in_in"]:
-            node.set_key()
     for node in node_dict.values():
         node.next = __find_next_keynode(node.next)
         node.prev = __find_prev_keynode(node.prev)
@@ -290,36 +337,36 @@ def __get_groups(node_dict):
     return groups
 
 
-def __find_prev_nonignore(node, ignore_key):
-    ink = []
-    prev = []
-    len_ignore_key = len(ignore_key)
-    for p in node.prev:
-        if p.name[:len_ignore_key] == ignore_key:
-            ink.append(p)
-            tmp_ink, tmp_prev = __find_prev_nonignore(p, ignore_key)
-            ink.extend(tmp_ink)
-            prev.extend(tmp_prev)
-        else:
-            prev.extend(prev)
-            p.next.remove(node) if node in p.next else None
-    return ink, prev
+# def __find_prev_nonignore(node, ignore_key):
+#     ink = []
+#     prev = []
+#     len_ignore_key = len(ignore_key)
+#     for p in node.prev:
+#         if p.name[:len_ignore_key] == ignore_key:
+#             ink.append(p)
+#             tmp_ink, tmp_prev = __find_prev_nonignore(p, ignore_key)
+#             ink.extend(tmp_ink)
+#             prev.extend(tmp_prev)
+#         else:
+#             prev.extend(prev)
+#             p.next.remove(node) if node in p.next else None
+#     return ink, prev
 
 
-def __find_next_nonignore(node, ignore_key):
-    ink = []
-    next = []
-    len_ignore_key = len(ignore_key)
-    for n in node.next:
-        if n.name[:len_ignore_key] == ignore_key:
-            ink.append(n)
-            tmp_ink, tmp_next = __find_next_nonignore(n, ignore_key)
-            ink.extend(tmp_ink)
-            next.extend(tmp_next)
-        else:
-            next.extend(next)
-            n.prev.remove(node) if node in n.prev else None
-    return ink, next
+# def __find_next_nonignore(node, ignore_key):
+#     ink = []
+#     next = []
+#     len_ignore_key = len(ignore_key)
+#     for n in node.next:
+#         if n.name[:len_ignore_key] == ignore_key:
+#             ink.append(n)
+#             tmp_ink, tmp_next = __find_next_nonignore(n, ignore_key)
+#             ink.extend(tmp_ink)
+#             next.extend(tmp_next)
+#         else:
+#             next.extend(next)
+#             n.prev.remove(node) if node in n.prev else None
+#     return ink, next
 
 
 def main():
@@ -329,34 +376,34 @@ def main():
     example_input = torch.randn(1, 3, 320, 320)
 
     # ignored module type
-    imt = {mvit.Transformer: MobileVitNode}
+    imt_dict = {mvit.Transformer: MVitNode}
     # get ignored module keys
-    imk = {}
-    for name, mod in model.named_modules():
-        for im_type in imt.keys():
-            if isinstance(mod, im_type):
-                imk[name] = {"module": mod, "node_type": imt[im_type]}
+    # imk = {}
+    # for name, mod in model.named_modules():
+    #     for im_type in imt.keys():
+    #         if isinstance(mod, im_type):
+    #             imk[name] = {"module": mod, "node_type": imt[im_type]}
 
-    node_dict, module2key = __backward2node(model, example_input)
+    node_dict, module2key = __backward2node(model, example_input, imt_dict)
 
     # merge the node_dict
-    for ignore_key in imk:
-        for node_key in node_dict.keys():
-            if node_key[: len(ignore_key)] == ignore_key:
-                break
-        ink1, prev = __find_prev_nonignore(node_dict[node_key], ignore_key)
-        ink2, next = __find_next_nonignore(node_dict[node_key], ignore_key)
-        for nk in list(set(ink1 + ink2)):
-            node_dict.pop(nk.name)
-        new_module = imk[ignore_key]["module"]
-        new_node = imk[ignore_key]["node_type"]
-        node_dict[ignore_key] = new_node(ignore_key, new_module)
-        node_dict[ignore_key].prev = list(set(prev))
-        node_dict[ignore_key].next = list(set(next))
-        for p in prev:
-            p.next.append(node_dict[ignore_key])
-        for n in next:
-            n.prev.append(node_dict[ignore_key])
+    # for ignore_key in imk:
+    #     for node_key in node_dict.keys():
+    #         if node_key[: len(ignore_key)] == ignore_key:
+    #             break
+    #     ink1, prev = __find_prev_nonignore(node_dict[node_key], ignore_key)
+    #     ink2, next = __find_next_nonignore(node_dict[node_key], ignore_key)
+    #     for nk in list(set(ink1 + ink2)):
+    #         node_dict.pop(nk.name)
+    #     new_module = imk[ignore_key]["module"]
+    #     new_node = imk[ignore_key]["node_type"]
+    #     node_dict[ignore_key] = new_node(ignore_key, new_module)
+    #     node_dict[ignore_key].prev = list(set(prev))
+    #     node_dict[ignore_key].next = list(set(next))
+    #     for p in prev:
+    #         p.next.append(node_dict[ignore_key])
+    #     for n in next:
+    #         n.prev.append(node_dict[ignore_key])
 
     groups = __get_groups(node_dict)
     # print groups
@@ -382,19 +429,19 @@ def main():
         node.execute()
     print("=" * 10, "Pruning take effect", "=" * 10)
 
-    print("=" * 10, "Print Nodes", "=" * 10)
-    for node in node_dict.values():
-        if isinstance(node, (InOutNode, OutOutNode)):
-            print(node.name, node.module)
-    print("=" * 10, "Print Nodes", "=" * 10)
+    # print("=" * 10, "Print Nodes", "=" * 10)
+    # for node in node_dict.values():
+    #     if isinstance(node, (InOutNode, OutOutNode)):
+    #         print(node.name, node.module)
+    # print("=" * 10, "Print Nodes", "=" * 10)
 
-    print("=" * 10, "Print Model", "=" * 10)
-    for name, module in model.named_modules():
-        if isinstance(module, (nn.Conv2d, nn.BatchNorm2d, nn.Linear)):
-            print(name, module)
-    print("=" * 10, "Print Model", "=" * 10)
+    # print("=" * 10, "Print Model", "=" * 10)
+    # for name, module in model.named_modules():
+    #     if isinstance(module, (nn.Conv2d, nn.BatchNorm2d, nn.Linear)):
+    #         print(name, module)
+    # print("=" * 10, "Print Model", "=" * 10)
 
-    example_input = torch.randn(1, 3, 4, 4)
+    example_input = torch.randn(1, 3, 320, 320)
     model(example_input)
 
 
