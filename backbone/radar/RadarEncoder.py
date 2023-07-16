@@ -13,27 +13,39 @@ from backbone.conv_utils.dcn import DeformableConv2d
 
 
 image_encoder_width = {
-    'L': [40, 80, 192, 384],  # 26m 83.3% 6attn
-    'S2': [32, 64, 144, 288],  # 12m 81.6% 4attn dp0.02
-    'S1': [32, 48, 120, 224],  # 6.1m 79.0
-    'S0': [32, 48, 96, 176],  # 75.0 75.7
+    "L": [40, 80, 192, 384],  # 26m 83.3% 6attn
+    "S2": [32, 64, 144, 288],  # 12m 81.6% 4attn dp0.02
+    "S1": [32, 48, 120, 224],  # 6.1m 79.0
+    "S0": [32, 48, 96, 176],  # 75.0 75.7
 }
 
 
 class RadarConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, first_calculator='pool'):
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride, first_calculator="pool"
+    ):
         super(RadarConv, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        if first_calculator == 'conv':
-            self.initial_conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
-                                          stride=stride, padding=kernel_size // 2)
-        elif first_calculator == 'pool':
+        if first_calculator == "conv":
+            self.initial_conv = nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=kernel_size // 2,
+            )
+        elif first_calculator == "pool":
             self.initial_conv = nn.AvgPool2d(3, stride=1, padding=1)
 
-        self.deformable_conv = DeformableConv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3,
-                                                stride=stride, padding=3 // 2)
+        self.deformable_conv = DeformableConv2d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=3 // 2,
+        )
 
     def forward(self, x):
         x = self.initial_conv(x)
@@ -47,20 +59,37 @@ class RCBlock(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.radar_conv = RadarConv(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1)
+        self.radar_conv = RadarConv(
+            in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=1
+        )
 
-        self.weight_conv1 = nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=1, stride=1,
-                                      padding=0)
+        self.weight_conv1 = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=in_channels,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
 
         self.norm = nn.BatchNorm2d(in_channels)
         self.activation = nn.ReLU(inplace=True)
 
         if down is False:
-            self.weight_conv2 = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1,
-                                          padding=0)
+            self.weight_conv2 = nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            )
         else:
-            self.weight_conv2 = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=2,
-                                          padding=1)
+            self.weight_conv2 = nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+            )
 
     def forward(self, x):
         x_res = x
@@ -75,23 +104,45 @@ class RCBlock(nn.Module):
 
 
 class RCNet(nn.Module):
-    def __init__(self, in_channels, phi='S0'):
+    def __init__(self, in_channels, phi="S0"):
         super(RCNet, self).__init__()
         self.phi = phi
         self.in_channels = in_channels
-
+        self.conv1 = nn.Conv2d(
+            in_channels, in_channels, kernel_size=3, stride=1, padding=1
+        )
         stage_blocks = []
         for i in range(4):
             if i == 0:
-                stage_blocks.append(RCBlock(in_channels=in_channels,
-                                            out_channels=image_encoder_width[phi][i] // 4, down=True))
-                stage_blocks.append(RCBlock(in_channels=image_encoder_width[phi][i] // 4,
-                                            out_channels=image_encoder_width[phi][i] // 4, down=True))
+                stage_blocks.append(
+                    RCBlock(
+                        in_channels=in_channels,
+                        out_channels=image_encoder_width[phi][i] // 4,
+                        down=True,
+                    )
+                )
+                stage_blocks.append(
+                    RCBlock(
+                        in_channels=image_encoder_width[phi][i] // 4,
+                        out_channels=image_encoder_width[phi][i] // 4,
+                        down=True,
+                    )
+                )
             else:
-                stage_blocks.append(RCBlock(in_channels=image_encoder_width[phi][i-1] // 4,
-                                            out_channels=image_encoder_width[phi][i-1] // 4, down=False))
-                stage_blocks.append(RCBlock(in_channels=image_encoder_width[phi][i-1] // 4,
-                                            out_channels=image_encoder_width[phi][i] // 4, down=True))
+                stage_blocks.append(
+                    RCBlock(
+                        in_channels=image_encoder_width[phi][i - 1] // 4,
+                        out_channels=image_encoder_width[phi][i - 1] // 4,
+                        down=False,
+                    )
+                )
+                stage_blocks.append(
+                    RCBlock(
+                        in_channels=image_encoder_width[phi][i - 1] // 4,
+                        out_channels=image_encoder_width[phi][i] // 4,
+                        down=True,
+                    )
+                )
 
         self.rc_blocks = nn.ModuleList(stage_blocks)
         # print(len(self.rc_blocks))
@@ -105,11 +156,12 @@ class RCNet(nn.Module):
         return output_features
 
     def forward(self, x):
+        x = self.conv1(x)
         x = self.forward_blocks(x)
         return x
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     input_map = torch.randn(1, 3, 416, 416)
     model = RCNet(in_channels=3)
     output = model(input_map)

@@ -2,11 +2,11 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from node import *
-from group import *
+from .node import *
+from .group import *
 import torchvision.models as models
-import mvit
-from test_model import *
+from . import mvit
+from .test_model import *
 
 from thop import profile, clever_format
 
@@ -52,8 +52,8 @@ ACTIVITION_BACKWARD_TYPE = [
 ]
 
 IGNORE_BACKWARD_TYPE = (
-    "AccumulateGrad",
-    "TBackward0",
+    # "AccumulateGrad",
+    # "TBackward0",
     "NoneType",
 )
 DEBUG = False
@@ -67,6 +67,9 @@ trace module from grad_fn
 
 def forward_hook(module, input, output):
     if torch.is_tensor(output):
+        if not hasattr(output.grad_fn, "metadata"):
+            print(module, input[0].shape, output.shape)
+            return
         if "module" not in output.grad_fn.metadata:
             output.grad_fn.metadata["module"] = module
         if "output" not in output.grad_fn.metadata:
@@ -87,10 +90,15 @@ def ig_forward_hook(module, input, output):
 
 def register_forward_hooks(model, imt):
     hooks = []
+    imk = []
+    for k, m in model.named_modules():
+        if isinstance(m, tuple(imt)):
+            for sub_k, _ in m.named_modules():
+                imk.append(k + "." + sub_k)
     for name, mod in model.named_modules():
         if isinstance(mod, tuple(imt)):
             hooks.append(mod.register_forward_hook(ig_forward_hook))
-        elif not mod._modules:  # is a leaf module
+        elif not mod._modules and name not in imk:  # is a leaf module
             hooks.append(mod.register_forward_hook(forward_hook))
     return hooks
 
@@ -168,7 +176,7 @@ def __init_dict_and_list(output):
         check_list.remove(check_list[0])
         for sub_g in grad:
             if sub_g[0].__class__.__name__ == "SumBackward0":
-                node_dict[f"output_{i}"] = DummyNode(f"output_{i}")
+                node_dict[f"output_{i}"] = OutputNode(f"output_{i}")
                 grad_list.append(
                     [node_dict[f"output_{i}"], sub_g[0].next_functions[0][0], 0]
                 )
@@ -192,14 +200,32 @@ def __backward2node(model, example_input, imt_dict):
     # register forward hook
     hooks = register_forward_hooks(model, imt_dict.keys())
 
-    output = model(example_input)
+    if isinstance(example_input, torch.Tensor):
+        output = model(example_input)
+    elif isinstance(example_input, dict):
+        output = model(**example_input)
+    elif isinstance(example_input, (list, tuple)):
+        output = model(*example_input)
 
     # init node_dict
     # node_dict = {"output": DummyNode("output")}
     # grad_list = [[node_dict["output"], output.grad_fn, 0]]
     node_dict, grad_list, output_sum = __init_dict_and_list(output)
     output_sum.backward()
-
+    input_list = []
+    if isinstance(example_input, torch.Tensor):
+        node_dict["input"] = InputNode("input", example_input)
+        input_list.append(node_dict["input"])
+    elif isinstance(example_input, dict):
+        for k in example_input.keys():
+            node_dict["input_" + k] = InputNode("input_" + k, example_input[k])
+            input_list.append(node_dict["input_" + k])
+    elif isinstance(example_input, (list, tuple)):
+        for i in range(len(example_input)):
+            node_dict["input_" + str(i)] = InputNode(
+                "input_" + str(i), example_input[i]
+            )
+            input_list.append(node_dict["input_" + str(i)])
     # remove hook
     for h in hooks:
         h.remove()
@@ -215,18 +241,8 @@ def __backward2node(model, example_input, imt_dict):
         else:
             checked_list.append([last, grad])
 
-        # patches: for ignore layer
-        # if grad.metadata["input"] in ignore_layer["input"]:
-        #     grad_next = ignore_layer["grad"].metadata["input"].grad.next_functions
-        #     node_dict[g_key] = MobileVitNode(g_key, grad.metadata["module"])
-        #     node_dict[g_key].next.append(last)
-        #     node_dict[g_key].add_level(level)
-        #     last.prev.append(node_dict[g_key])
-        #     for sub_g in grad_next:
-        #         grad_list.append([node_dict[g_key], sub_g[0], level + 1])
-        #     continue
-
         g_name = grad.__class__.__name__
+
         if g_name in IGNORE_BACKWARD_TYPE:
             continue
 
@@ -240,12 +256,16 @@ def __backward2node(model, example_input, imt_dict):
                     g_key, grad.metadata["ig_module"]
                 )
                 backward2key_dict[grad] = g_key
-            node_dict[g_key].next.append(last)
+            node_dict[g_key].add_next(last)
             node_dict[g_key].add_level(level)
-            last.prev.append(node_dict[g_key])
-            grad_next = grad.metadata["input"].grad_fn.next_functions
-            for sub_g in grad_next:
-                grad_list.append([node_dict[g_key], sub_g[0], level + 1])
+            # if not hasattr(grad.metadata["input"].grad_fn, "next_functions"):
+            #     continue
+            grad_list.append(
+                [node_dict[g_key], grad.metadata["input"].grad_fn, level + 1]
+            )
+            # grad_next = grad.metadata["input"].grad_fn.next_functions
+            # for sub_g in grad_next:
+            #     grad_list.append([node_dict[g_key], sub_g[0], level + 1])
             continue
 
         if grad in backward2key_dict.keys():
@@ -262,14 +282,14 @@ def __backward2node(model, example_input, imt_dict):
                     node_dict[g_key] = GroupConvNode(g_key, grad.metadata["module"])
             elif g_name == "AddmmBackward0":
                 node_dict[g_key] = LinearNode(g_key, grad.metadata["module"])
-            elif g_name == "ReshapeAliasBackward0":
-                node_dict[g_key] = FlattenNode(g_key)
-            elif g_name == "PermuteBackward0":
-                node_dict[g_key] = PermuteNode(g_key)
-            elif g_name == "ExpandBackward0":
-                node_dict[g_key] = ExpandNode(g_key)
-            elif g_name == "TransposeBackward0":
-                node_dict[g_key] = TransposeNode(g_key)
+            # elif g_name == "ReshapeAliasBackward0":
+            #     node_dict[g_key] = FlattenNode(g_key)
+            # elif g_name == "PermuteBackward0":
+            #     node_dict[g_key] = PermuteNode(g_key)
+            # elif g_name == "ExpandBackward0":
+            #     node_dict[g_key] = ExpandNode(g_key)
+            # elif g_name == "TransposeBackward0":
+            #     node_dict[g_key] = TransposeNode(g_key)
             elif g_name == "MeanBackward1":
                 node_dict[g_key] = AdaptiveAvgPoolNode(g_key)
             elif g_name == "NativeBatchNormBackward0":
@@ -289,8 +309,8 @@ def __backward2node(model, example_input, imt_dict):
                 node_dict[g_key] = ActiNode(g_key)
             elif g_name == "CppBackward0":
                 pass
-            elif g_name == "MulBackward0":
-                node_dict[g_key] = MulNode(g_key)
+            # elif g_name == "MulBackward0":
+            #     node_dict[g_key] = MulNode(g_key)
             elif g_name == "MmBackward0":
                 node_dict[g_key] = MMNode(g_key)
             elif g_name == "MaxPool2DWithIndicesBackward0":
@@ -305,14 +325,20 @@ def __backward2node(model, example_input, imt_dict):
                 continue
             backward2key_dict[grad] = g_key
         # declare the relation
-        node_dict[g_key].next.append(last)
+        node_dict[g_key].add_next(last)
         node_dict[g_key].add_level(level)
-        last.prev.append(node_dict[g_key])
 
         # add next grad to the search list
         grad_next = grad.next_functions
         for sub_g in grad_next:
             grad_list.append([node_dict[g_key], sub_g[0], level + 1])
+
+        # find input
+        if "input" in grad.metadata.keys():
+            for i in input_list:
+                if i.input is grad.metadata["input"]:
+                    i.add_next(node_dict[g_key])
+                    i.add_level(level)
     for node in node_dict.values():
         node.next = __find_next_keynode(node.next)
         node.prev = __find_prev_keynode(node.prev)
@@ -320,21 +346,61 @@ def __backward2node(model, example_input, imt_dict):
     return node_dict
 
 
+def __get_all_next(node, cl=[]):
+    all_next = [node]
+    cl.append(node)
+    for n in node.next + node.prev:
+        if not n.key:
+            continue
+        if n.node_type == "in_in" and n not in cl:
+            tmp_all_next, tmp_cl = __get_all_next(n, cl)
+            all_next.extend(tmp_all_next)
+            cl.extend(tmp_cl)
+
+    for prev_node in node.prev:
+        if not prev_node.key:
+            continue
+        for prev_next_node in prev_node.next:
+            if prev_next_node.node_type != "in_in" or prev_next_node in cl:
+                continue
+            tmp_all_next, tmp_cl = __get_all_next(prev_next_node, cl)
+            all_next.extend(tmp_all_next)
+            cl.extend(tmp_cl)
+    all_next = list(set(all_next))
+    cl = list(set(cl))
+    return all_next, cl
+
+
+def __get_group(node):
+    group = [node]
+    if node.node_type != "in_in":
+        return group
+    all_next, _ = __get_all_next(node, cl=[])
+    all_next = list(set(all_next))
+    group.extend(all_next)
+    for next_node in all_next:
+        if next_node.node_type != "in_in":
+            continue
+        group.extend([n for n in next_node.prev if n.key])
+    return group
+
+
 def __get_groups(node_dict):
     checked_list = list(node_dict.keys())
+    AddB_list = []
     groups = []
+    for name in checked_list:
+        if name[-4:] == "AddB":
+            checked_list.remove(name)
+            AddB_list.append(name)
+    checked_list = AddB_list + checked_list
     while checked_list:
-        print("=" * 10, "checked_list", checked_list) if DEBUG else None
         node_name = checked_list[0]
         node = node_dict[node_name]
         if not node.key:
             checked_list.remove(node_name)
             continue
-        group = [node]
-        if node.node_type in ["in_in"]:
-            for kn in node.prev:
-                if kn.key:
-                    group.append(kn)
+        group = __get_group(node)
         group = CurrentGroup(list(set(group)))
         print("=" * 5, "group", [g.name for g in group.nodes]) if DEBUG else None
         for n in group.nodes:
@@ -356,6 +422,46 @@ def __test_speed(model, example_input):
         model(example_input)
     end = time.time()
     print(f"time: {(end - start) / epoch/ 1e-3} ms")
+
+
+def __get_flops(model, example_input, device):
+    model.to(device)
+    if isinstance(example_input, torch.Tensor):
+        example_input = [example_input.to(device)]
+    elif isinstance(example_input, dict):
+        example_input = [v.to(device) for v in example_input.values()]
+    elif isinstance(example_input, (list, tuple)):
+        example_input = [v.to(device) for v in example_input]
+    flops, params = profile(model, inputs=example_input)
+    print(clever_format([flops, params], "%.3f"))
+    return flops, params
+
+
+def prune_model(model, example_input, prune_rate=0.7, device="cpu", imt_dict={}):
+    device = torch.device(device)
+    model.eval()
+    print("=" * 20, "Original Model", "=" * 20)
+    __get_flops(model, example_input, device)
+    print("=" * 20, "Original Model", "=" * 20)
+
+    node_dict = __backward2node(model, example_input, imt_dict)
+    groups = __get_groups(node_dict)
+    groups_hascat = []
+    for g in groups:
+        if g.hascat():
+            groups_hascat.append(g)
+            continue
+        if g.nodes[0].name == "image_radar_encoder.fpn.ghost_5_to_4.ghost1":
+            print("hello")
+        g.prune(prune_rate)
+    for g in groups_hascat:
+        g.prune(prune_rate)
+    for node in node_dict.values():
+        node.execute()
+
+    print("=" * 20, "Pruned Model", "=" * 20)
+    __get_flops(model, example_input, device)
+    print("=" * 20, "Pruned Model", "=" * 20)
 
 
 def main():
@@ -388,7 +494,7 @@ def main():
     print("=" * 10, "Prune Groups", "=" * 10) if DEBUG else None
     groups.reverse()
     for g in groups:
-        g.prune()
+        g.prune(0.7)
     print("=" * 10, "Prune Groups", "=" * 10) if DEBUG else None
 
     print("=" * 10, "Pruning take effect", "=" * 10) if DEBUG else None

@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import abc
-from node import *
+from .node import *
 
 """
 params:
@@ -26,9 +26,11 @@ class BaseGroup(abc.ABC):
         self.next_group = None
         self.channel = self.get_info()
 
-    @abc.abstractmethod
-    def is_prunable(self):
-        pass
+    def hascat(self):
+        for n in self.nodes:
+            if isinstance(n, ConcatNode):
+                return True
+        return False
 
     @abc.abstractmethod
     def get_info(self):
@@ -41,6 +43,9 @@ class BaseGroup(abc.ABC):
 
     def prune(self, prune_idx, dim):
         for node in self.nodes:
+            if isinstance(node, ConcatNode) and dim == 0:
+                node.prune(prune_idx, dim, self.channel)
+                continue
             node.prune(prune_idx, dim)
 
 
@@ -51,6 +56,7 @@ class CurrentGroup(BaseGroup):
     def __init__(self, nodes: list) -> None:
         super().__init__(nodes, "current")
         self.__get_next_group()
+        self.round_to = self.next_group.get_round_to()
 
     def __get_next_group(self):
         next_group = []
@@ -58,9 +64,6 @@ class CurrentGroup(BaseGroup):
             next_group.extend(node.next)
         next_group = NextGroup(list(set(next_group)))
         self.next_group = next_group
-
-    def is_prunable(self):
-        pass
 
     def get_info(self):
         out_ch = []
@@ -72,8 +75,8 @@ class CurrentGroup(BaseGroup):
     def print_next_info(self):
         self.next_group.print_info()
 
-    def prune(self):
-        round_to = 1
+    def prune(self, prune_ratio):
+        round_to = max(self.round_to)
         split = 1
         for node in self.next_group.nodes:
             if node.name[:6] == "output":
@@ -82,9 +85,9 @@ class CurrentGroup(BaseGroup):
                 round_to = node.ratio
                 split = node.ratio
                 break
-        sparsity = 0.7
+        prune_ratio = 0.7
         prune_num = (
-            int(math.floor(self.channel * sparsity / round_to) * round_to) // split
+            int(math.floor(self.channel * prune_ratio / round_to) * round_to) // split
         )
         prune_idx = torch.cat(
             [
@@ -109,8 +112,11 @@ class NextGroup(BaseGroup):
     def __init__(self, nodes: list) -> None:
         super().__init__(nodes, "next")
 
-    def is_prunable(self):
-        pass
+    def get_round_to(self):
+        round_to = []
+        for node in self.nodes:
+            round_to.append(node.round_to)
+        return round_to
 
     def get_info(self):
         in_ch = []
