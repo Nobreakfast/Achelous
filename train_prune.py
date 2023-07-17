@@ -33,7 +33,18 @@ from utils_seg_pc.callbacks import EvalCallback as EvalCallback_seg_pc
 import argparse
 import torch_pruning as tp
 import pruner.utils as pruner_utils
-from prune_test import test1
+
+# pruning
+from pruner.backward2node import prune_model, test_speed
+import backbone.attention_modules.shuffle_attention as sa
+import backbone.radar.RadarEncoder as re
+from backbone.conv_utils.dcn import DeformableConv2d
+from backbone.conv_utils.ghost_conv import GhostModule
+from backbone.attention_modules.eca import eca_block
+import backbone.vision.mobilevit_modules.mobilevit as mv
+from nets.Achelous import Achelous3T
+from pruner.node import MVitNode, DCNNode, ShuffleAttnNode, GhostModuleNode, ecaNode
+
 
 if __name__ == "__main__":
     # =========== 参数解析实例 =========== #
@@ -354,31 +365,31 @@ if __name__ == "__main__":
     # ------------------------------------------------------#
     #   创建模型
     # ------------------------------------------------------#
-    # if is_radar_pc_seg:
-    #     model = Achelous(
-    #         resolution=input_shape[0],
-    #         num_det=num_classes,
-    #         num_seg=num_classes_seg,
-    #         phi=phi,
-    #         backbone=backbone,
-    #         neck=neck,
-    #         nano_head=lightweight,
-    #         pc_seg=pc_seg_model,
-    #         pc_channels=radar_pc_channels,
-    #         pc_classes=radar_pc_classes,
-    #         spp=spp,
-    #     ).cuda(local_rank)
-    # else:
-    #     model = Achelous3T(
-    #         resolution=input_shape[0],
-    #         num_det=num_classes,
-    #         num_seg=num_classes_seg,
-    #         phi=phi,
-    #         backbone=backbone,
-    #         neck=neck,
-    #         spp=spp,
-    #         nano_head=lightweight,
-    #     ).cuda(local_rank)
+    if is_radar_pc_seg:
+        model = Achelous(
+            resolution=input_shape[0],
+            num_det=num_classes,
+            num_seg=num_classes_seg,
+            phi=phi,
+            backbone=backbone,
+            neck=neck,
+            nano_head=lightweight,
+            pc_seg=pc_seg_model,
+            pc_channels=radar_pc_channels,
+            pc_classes=radar_pc_classes,
+            spp=spp,
+        ).cuda(local_rank)
+    else:
+        model = Achelous3T(
+            resolution=input_shape[0],
+            num_det=num_classes,
+            num_seg=num_classes_seg,
+            phi=phi,
+            backbone=backbone,
+            neck=neck,
+            spp=spp,
+            nano_head=lightweight,
+        ).cuda(local_rank)
 
     # if model_path != "":
     #     # ------------------------------------------------------#
@@ -423,12 +434,27 @@ if __name__ == "__main__":
     #   Pruning
     # ------------------------------------------------------#
     # model.to(torch.device("cpu"))
-    model = test1()
-    # if args.pm != 0:
-    #     sparsity_dict = pruner_utils.get_sparsity(model.image_radar_encoder, args.pm)
-    #     pruner_utils.prune_model(model.image_radar_encoder, sparsity_dict)
-
-    model.cuda(local_rank)
+    if args.pm > 0:
+        model.cpu()
+        example_input = [
+            torch.randn(1, 3, 320, 320),
+            torch.randn(1, 3, 320, 320),
+        ]
+        imt_dict = {
+            mv.Transformer: MVitNode,
+            DeformableConv2d: DCNNode,
+            sa.ShuffleAttention: ShuffleAttnNode,
+            GhostModule: GhostModuleNode,
+            eca_block: ecaNode,
+        }
+        prune_model(
+            model,
+            example_input,
+            args.pm,
+            "cpu",
+            imt_dict,
+        )
+        model.cuda(local_rank)
 
     # ----------------------#
     #   获得损失函数
