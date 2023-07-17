@@ -57,7 +57,8 @@ def __test_achelous():
         GhostModule: GhostModuleNode,
         eca_block: ecaNode,
     }
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     model.to(device).eval()
     example_input = [
         torch.randn(1, 3, 320, 320).to(device),
@@ -69,7 +70,7 @@ def __test_achelous():
     prune_model(
         model,
         [torch.randn(1, 3, 320, 320), torch.randn(1, 3, 320, 320)],
-        0.7,
+        prune_ratio,
         "cpu",
         imt_dict,
     )

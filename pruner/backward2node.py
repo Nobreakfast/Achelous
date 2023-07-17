@@ -14,6 +14,7 @@ from thop import profile, clever_format
 # import backbone.attention_modules.shuffle_attention as sa
 # import backbone.radar.RadarEncoder as re
 import torch_pruning as tp
+import tqdm
 
 CONV_TYPE = (
     nn.Conv1d,
@@ -418,7 +419,7 @@ def test_speed(model, example_input, epoch=30):
     import time
 
     start = time.time()
-    for i in range(epoch):
+    for i in tqdm.trange(epoch):
         model(*example_input)
     end = time.time()
     print(f"time: {(end - start) / epoch/ 1e-3} ms")
