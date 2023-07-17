@@ -461,6 +461,8 @@ def prune_model(model, example_input, prune_rate=0.7, device="cpu", imt_dict={})
     groups = __get_groups(node_dict)
     groups_hascat = []
     for g in groups:
+        if g.haskey("image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"):
+            continue
         if g.hascat():
             groups_hascat.append(g)
             continue

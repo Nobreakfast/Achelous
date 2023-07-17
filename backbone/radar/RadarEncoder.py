@@ -108,9 +108,9 @@ class RCNet(nn.Module):
         super(RCNet, self).__init__()
         self.phi = phi
         self.in_channels = in_channels
-        self.conv1 = nn.Conv2d(
-            in_channels, in_channels, kernel_size=3, stride=1, padding=1
-        )
+        # self.conv1 = nn.Conv2d(
+        #     in_channels, in_channels, kernel_size=3, stride=1, padding=1
+        # )
         stage_blocks = []
         for i in range(4):
             if i == 0:
@@ -156,7 +156,7 @@ class RCNet(nn.Module):
         return output_features
 
     def forward(self, x):
-        x = self.conv1(x)
+        # x = self.conv1(x)
         x = self.forward_blocks(x)
         return x
 

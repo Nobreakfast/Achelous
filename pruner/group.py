@@ -32,6 +32,12 @@ class BaseGroup(abc.ABC):
                 return True
         return False
 
+    def haskey(self, key):
+        for n in self.nodes:
+            if n.name == key:
+                return True
+        return False
+
     @abc.abstractmethod
     def get_info(self):
         pass
