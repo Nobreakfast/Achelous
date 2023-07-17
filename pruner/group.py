@@ -85,7 +85,6 @@ class CurrentGroup(BaseGroup):
                 round_to = node.ratio
                 split = node.ratio
                 break
-        prune_ratio = 0.7
         prune_num = (
             int(math.floor(self.channel * prune_ratio / round_to) * round_to) // split
         )
