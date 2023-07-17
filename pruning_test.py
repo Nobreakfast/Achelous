@@ -38,7 +38,7 @@ def __test_achelous():
     from nets.Achelous import Achelous3T
     from pruner.node import MVitNode, DCNNode, ShuffleAttnNode, GhostModuleNode, ecaNode
 
-    test_epoch = 300
+    test_epoch = 30
     prune_ratio = 0.7
     model = Achelous3T(
         resolution=320,
@@ -57,26 +57,26 @@ def __test_achelous():
         GhostModule: GhostModuleNode,
         eca_block: ecaNode,
     }
-    #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+    device = torch.device(dev)
     model.to(device).eval()
     example_input = [
         torch.randn(1, 3, 320, 320).to(device),
         torch.randn(1, 3, 320, 320).to(device),
     ]
-    test_speed(model, example_input, test_epoch)
+    test_speed(model, example_input, test_epoch, dev)
     model.cpu()
     example_input = [i.cpu() for i in example_input]
     prune_model(
         model,
-        [torch.randn(1, 3, 320, 320), torch.randn(1, 3, 320, 320)],
+        example_input,
         prune_ratio,
-        "cpu",
+        dev,
         imt_dict,
     )
     model.to(device)
     example_input = [i.to(device) for i in example_input]
-    test_speed(model, example_input, test_epoch)
+    test_speed(model, example_input, test_epoch, dev)
 
 
 def main():

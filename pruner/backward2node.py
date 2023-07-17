@@ -9,6 +9,7 @@ from . import mvit
 from .test_model import *
 
 from thop import profile, clever_format
+from torch import profiler
 
 # from nets.Achelous import Achelous3T
 # import backbone.attention_modules.shuffle_attention as sa
@@ -412,17 +413,28 @@ def __get_groups(node_dict):
 
 
 @torch.no_grad()
-def test_speed(model, example_input, epoch=30):
+def test_speed(model, example_input, epoch=30, device="cpu"):
     epoch = epoch
     for i in range(epoch):
         model(*example_input)
     import time
 
+    activity = (
+        profiler.ProfilerActivity.CPU
+        if device == "cpu"
+        else profiler.ProfilerActivity.CUDA
+    )
+    sort_by = "cpu_time_total" if device == "cpu" else "cuda_time_total"
+    with profiler.profile(activities=[activity], record_shapes=True) as prof:
+        with profiler.record_function("model_inference"):
+            model(*example_input)
+    print(prof.key_averages().table(sort_by=sort_by, row_limit=20))
     start = time.time()
     for i in tqdm.trange(epoch):
         model(*example_input)
     end = time.time()
-    print(f"time: {(end - start) / epoch/ 1e-3} ms")
+    inf_time = (end - start) / epoch / 1e-3
+    print(f"time: {inf_time} ms, FPS: {1000/inf_time}")
 
 
 def __get_flops(model, example_input, device):
