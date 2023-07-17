@@ -411,15 +411,15 @@ def __get_groups(node_dict):
 
 
 @torch.no_grad()
-def __test_speed(model, example_input):
-    epoch = 300
+def test_speed(model, example_input, epoch=30):
+    epoch = epoch
     for i in range(epoch):
-        model(example_input)
+        model(*example_input)
     import time
 
     start = time.time()
     for i in range(epoch):
-        model(example_input)
+        model(*example_input)
     end = time.time()
     print(f"time: {(end - start) / epoch/ 1e-3} ms")
 
@@ -451,8 +451,6 @@ def prune_model(model, example_input, prune_rate=0.7, device="cpu", imt_dict={})
         if g.hascat():
             groups_hascat.append(g)
             continue
-        if g.nodes[0].name == "image_radar_encoder.fpn.ghost_5_to_4.ghost1":
-            print("hello")
         g.prune(prune_rate)
     for g in groups_hascat:
         g.prune(prune_rate)
