@@ -278,10 +278,16 @@ def __backward2node(model, example_input, imt_dict):
             except:
                 g_key = last.name + "." + g_name[:4]
             if g_name == "ConvolutionBackward0":
-                if grad.metadata["module"].groups == 1:
-                    node_dict[g_key] = ConvNode(g_key, grad.metadata["module"])
-                else:
+                if (
+                    grad.metadata["module"].groups
+                    == grad.metadata["module"].in_channels
+                ) and (
+                    grad.metadata["module"].groups
+                    == grad.metadata["module"].out_channels
+                ):
                     node_dict[g_key] = GroupConvNode(g_key, grad.metadata["module"])
+                else:
+                    node_dict[g_key] = ConvNode(g_key, grad.metadata["module"])
             elif g_name == "AddmmBackward0":
                 node_dict[g_key] = LinearNode(g_key, grad.metadata["module"])
             # elif g_name == "ReshapeAliasBackward0":

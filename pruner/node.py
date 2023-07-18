@@ -364,6 +364,7 @@ class ConcatNode(RemapNode):
 class SplitNode(RemapNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
+        self.split = self.ratio
 
     def get_channels(self):
         if self.in_ch != 0 and self.out_ch != 0:
@@ -576,6 +577,8 @@ class ShuffleAttnNode(OutOutNode):
 class GhostModuleNode(InOutNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module)
+        self.ratio = self.module.ratio
+        self.split = 2
 
     def get_channels(self):
         self.in_ch = self.module.primary_conv[0].in_channels
@@ -583,9 +586,11 @@ class GhostModuleNode(InOutNode):
         return self.in_ch, self.out_ch
 
     def execute(self):
-        self.saved_idx[1] = self._get_saved_idx(self.out_ch, self.prune_idx[1])
+        self.saved_idx[1] = self._get_saved_idx(
+            self.out_ch // self.ratio, self.prune_idx[1][: self.out_ch // self.ratio]
+        )
         self.saved_idx[0] = self._get_saved_idx(self.in_ch, self.prune_idx[0])
-        self.saved_idx[1] = self.saved_idx[1] // 2
+        self.saved_idx[1] = self.saved_idx[1]
         # prune primary_conv
         self._prune_param(self.module.primary_conv[0].weight, self.saved_idx[0], 1)
         self._prune_param(self.module.primary_conv[0].weight, self.saved_idx[1], 0)

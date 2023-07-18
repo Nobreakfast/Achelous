@@ -8,6 +8,7 @@ class GhostModule(nn.Module):
         self, inp, oup, kernel_size=1, ratio=2, dw_size=3, stride=1, relu=True
     ):
         super(GhostModule, self).__init__()
+        self.ratio = ratio
         self.oup = oup
         init_channels = math.ceil(oup / ratio)
         new_channels = init_channels * (ratio - 1)
@@ -39,6 +40,7 @@ class GhostModule(nn.Module):
         x2 = self.cheap_operation(x1)
         out = torch.cat([x1, x2], dim=1)
         return out[:, : self.oup, :, :]
+        # return out
 
 
 class GhostBottleneck(nn.Module):

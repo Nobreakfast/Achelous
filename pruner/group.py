@@ -87,9 +87,9 @@ class CurrentGroup(BaseGroup):
         for node in self.next_group.nodes:
             if node.name[:6] == "output":
                 return
-            if isinstance(node, SplitNode):
-                round_to = node.ratio
-                split = node.ratio
+            if hasattr(node, "split"):
+                round_to = node.split
+                split = node.split
                 break
         prune_num = (
             int(math.floor(self.channel * prune_ratio / round_to) * round_to) // split

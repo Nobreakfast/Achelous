@@ -39,7 +39,7 @@ def __test_achelous():
     from pruner.node import MVitNode, DCNNode, ShuffleAttnNode, GhostModuleNode, ecaNode
 
     test_epoch = 1
-    prune_ratio = 0.5
+    prune_ratio = 0.7
     model = Achelous3T(
         resolution=320,
         num_det=7,
