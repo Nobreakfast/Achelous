@@ -39,8 +39,7 @@ class GhostModule(nn.Module):
         x1 = self.primary_conv(x)
         x2 = self.cheap_operation(x1)
         out = torch.cat([x1, x2], dim=1)
-        return out[:, : self.oup, :, :]
-        # return out
+        return out[:, : self.oup, :, :]  # TODO hard to deal with the concat problem
 
 
 class GhostBottleneck(nn.Module):
