@@ -347,11 +347,19 @@ def __backward2node(model, example_input, imt_dict):
                 if i.input is grad.metadata["input"]:
                     i.add_next(node_dict[g_key])
                     i.add_level(level)
+    ignore_node = []
     for node in node_dict.values():
         node.next = __find_next_keynode(node.next)
         node.prev = __find_prev_keynode(node.prev)
+        if isinstance(node, OutputNode):
+            for sub_n in node.prev:
+                if sub_n.node_type == "in_out":
+                    ignore_node.append(sub_n)
+                else:
+                    ignore_node.extend(sub_n.prev)
+
     print("=" * 10, "Insert Relation", "=" * 10) if DEBUG else None
-    return node_dict
+    return node_dict, ignore_node
 
 
 def __get_all_next(node, cl=[]):
@@ -463,11 +471,14 @@ def prune_model(model, example_input, prune_rate=0.7, device="cpu", imt_dict={})
     __get_flops(model, example_input, device)
     print("=" * 20, "Original Model", "=" * 20)
 
-    node_dict = __backward2node(model, example_input, imt_dict)
+    node_dict, ignore_node = __backward2node(model, example_input, imt_dict)
     groups = __get_groups(node_dict)
     groups_hascat = []
     for g in groups:
-        if g.haskey("image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"):
+        if g.haskey(
+            ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"]
+            + [n.name for n in ignore_node]
+        ):
             continue
         if g.hascat():
             groups_hascat.append(g)

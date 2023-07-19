@@ -34,7 +34,7 @@ class BaseGroup(abc.ABC):
 
     def haskey(self, key):
         for n in self.nodes:
-            if n.name == key:
+            if n.name in key:
                 return True
         return False
 
