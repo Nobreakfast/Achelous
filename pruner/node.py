@@ -578,7 +578,7 @@ class GhostModuleNode(InOutNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module)
         self.ratio = self.module.ratio
-        self.split = 2
+        self.cat_idx1 = 2
 
     def get_channels(self):
         self.in_ch = self.module.primary_conv[0].in_channels

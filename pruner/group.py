@@ -84,22 +84,34 @@ class CurrentGroup(BaseGroup):
     def prune(self, prune_ratio):
         round_to = max(self.round_to)
         split = 1
+        cat = 1
         for node in self.next_group.nodes:
             if node.name[:6] == "output":
                 return
             if hasattr(node, "split"):
-                round_to = node.split
+                round_to *= node.split
                 split = node.split
                 break
+        for node in self.nodes:
+            if hasattr(node, "cat_idx1"):
+                cat = node.cat_idx1
+                round_to *= cat
+                break
+
         prune_num = (
-            int(math.floor(self.channel * prune_ratio / round_to) * round_to) // split
+            int(math.floor(self.channel * prune_ratio / round_to) * round_to)
+            // split
+            // cat
+        )
+        tmp_prune_idx = torch.cat(
+            [
+                torch.randperm(self.channel // split // cat)[:prune_num]
+                + i * self.channel // split // cat
+                for i in range(cat)
+            ]
         )
         prune_idx = torch.cat(
-            [
-                torch.randperm(self.channel // split)[:prune_num]
-                + i * self.channel / split
-                for i in range(split)
-            ]
+            [tmp_prune_idx + i * self.channel / split for i in range(split)]
         )
         for node in self.nodes:
             if node.prune_idx[1] != []:
