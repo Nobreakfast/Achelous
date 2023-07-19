@@ -590,48 +590,65 @@ class GhostModuleNode(InOutNode):
             self.out_ch // self.ratio, self.prune_idx[1][: self.out_ch // self.ratio]
         )
         self.saved_idx[0] = self._get_saved_idx(self.in_ch, self.prune_idx[0])
-        self.saved_idx[1] = self.saved_idx[1]
         # prune primary_conv
         self._prune_param(self.module.primary_conv[0].weight, self.saved_idx[0], 1)
-        self._prune_param(self.module.primary_conv[0].weight, self.saved_idx[1], 0)
-        if self.module.primary_conv[0].bias is not None:
-            self._prune_param(self.module.primary_conv[0].bias, self.saved_idx[1], 0)
+        if not isinstance(self.prune_idx[1], list):
+            self._prune_param(self.module.primary_conv[0].weight, self.saved_idx[1], 0)
+            if self.module.primary_conv[0].bias is not None:
+                self._prune_param(
+                    self.module.primary_conv[0].bias, self.saved_idx[1], 0
+                )
         self.module.primary_conv[0].in_channels = len(self.saved_idx[0])
-        self.module.primary_conv[0].out_channels = len(self.saved_idx[1])
+
+        if not isinstance(self.prune_idx[1], list):
+            self.module.primary_conv[0].out_channels = len(self.saved_idx[1])
 
         # prune primary_conv bn
-        self._prune_param(self.module.primary_conv[1].weight, self.saved_idx[1], 0)
-        if self.module.primary_conv[1].bias is not None:
-            self._prune_param(self.module.primary_conv[1].bias, self.saved_idx[1], 0)
-        self.module.primary_conv[1].num_features = len(self.saved_idx[1])
-        self.module.primary_conv[1].running_mean = self.module.primary_conv[
-            1
-        ].running_mean.data[self.saved_idx[1]]
-        self.module.primary_conv[1].running_var = self.module.primary_conv[
-            1
-        ].running_var.data[self.saved_idx[1]]
 
-        # prune cheap_operation output channel
-        self._prune_param(self.module.cheap_operation[0].weight, self.saved_idx[1], 0)
-        if self.module.cheap_operation[0].bias is not None:
-            self._prune_param(self.module.cheap_operation[0].bias, self.saved_idx[1], 0)
-        self.module.cheap_operation[0].in_channels = len(self.saved_idx[1])
-        self.module.cheap_operation[0].out_channels = len(self.saved_idx[1])
-        self.module.cheap_operation[0].groups = len(self.saved_idx[1])
+        if not isinstance(self.prune_idx[1], list):
+            self._prune_param(self.module.primary_conv[1].weight, self.saved_idx[1], 0)
+            if self.module.primary_conv[1].bias is not None:
+                self._prune_param(
+                    self.module.primary_conv[1].bias, self.saved_idx[1], 0
+                )
+            self.module.primary_conv[1].num_features = len(self.saved_idx[1])
+            self.module.primary_conv[1].running_mean = self.module.primary_conv[
+                1
+            ].running_mean.data[self.saved_idx[1]]
+            self.module.primary_conv[1].running_var = self.module.primary_conv[
+                1
+            ].running_var.data[self.saved_idx[1]]
 
-        # prune cheap_operation bn
-        self._prune_param(self.module.cheap_operation[1].weight, self.saved_idx[1], 0)
-        if self.module.cheap_operation[1].bias is not None:
-            self._prune_param(self.module.cheap_operation[1].bias, self.saved_idx[1], 0)
-        self.module.cheap_operation[1].num_features = len(self.saved_idx[1])
-        self.module.cheap_operation[1].running_mean = self.module.cheap_operation[
-            1
-        ].running_mean.data[self.saved_idx[1]]
-        self.module.cheap_operation[1].running_var = self.module.cheap_operation[
-            1
-        ].running_var.data[self.saved_idx[1]]
+        if not isinstance(self.prune_idx[1], list):
+            # prune cheap_operation output channel
+            self._prune_param(
+                self.module.cheap_operation[0].weight, self.saved_idx[1], 0
+            )
+            if self.module.cheap_operation[0].bias is not None:
+                self._prune_param(
+                    self.module.cheap_operation[0].bias, self.saved_idx[1], 0
+                )
+            self.module.cheap_operation[0].in_channels = len(self.saved_idx[1])
+            self.module.cheap_operation[0].out_channels = len(self.saved_idx[1])
+            self.module.cheap_operation[0].groups = len(self.saved_idx[1])
 
-        self.module.oup = self.out_ch - len(self.prune_idx[1])
+            # prune cheap_operation bn
+            self._prune_param(
+                self.module.cheap_operation[1].weight, self.saved_idx[1], 0
+            )
+            if self.module.cheap_operation[1].bias is not None:
+                self._prune_param(
+                    self.module.cheap_operation[1].bias, self.saved_idx[1], 0
+                )
+            self.module.cheap_operation[1].num_features = len(self.saved_idx[1])
+            self.module.cheap_operation[1].running_mean = self.module.cheap_operation[
+                1
+            ].running_mean.data[self.saved_idx[1]]
+            self.module.cheap_operation[1].running_var = self.module.cheap_operation[
+                1
+            ].running_var.data[self.saved_idx[1]]
+
+            self.module.oup = self.out_ch - len(self.prune_idx[1])
 
 
 ######## ecaNode ########

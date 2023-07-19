@@ -86,7 +86,7 @@ class CurrentGroup(BaseGroup):
         split = 1
         cat = 1
         for node in self.next_group.nodes:
-            if node.name[:6] == "output":
+            if isinstance(node, OutputNode):
                 return
             if hasattr(node, "split"):
                 round_to *= node.split
