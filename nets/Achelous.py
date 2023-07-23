@@ -65,10 +65,6 @@ class Achelous(nn.Module):
         )
         self.det_head = DecoupleHead(num_classes=num_det, phi=phi, nano_head=nano_head)
 
-        if self.training:
-            pass
-            # self.vjda_networks = VRJA_VAE()
-
     def feature_augment(self, fpn_input):
         pass
 
@@ -116,10 +112,6 @@ class Achelous3T(nn.Module):
         )
         self.det_head = DecoupleHead(num_classes=num_det, phi=phi, nano_head=nano_head)
 
-        if self.training:
-            pass
-            # self.vrja_networks =
-
     def forward(self, x, x_radar):
         fpn_out, se_seg_output, lane_seg_output = self.image_radar_encoder(x, x_radar)
         det_output = self.det_head(fpn_out)
@@ -151,10 +143,9 @@ if __name__ == "__main__":
     print(output_map1[2].shape)
     print(output_map2.shape)
     print(output_map3.shape)
-    print(output_map4[0].shape)
 
-    print(summary(model, input_size=[(1, 3, 320, 320), (1, 3, 320, 320), (1, 6, 256)]))
-    macs, params = profile(model, inputs=[input_map, input_map_radar, input_pc_radar])
+    print(summary(model, input_size=[(1, 3, 320, 320), (1, 3, 320, 320)]))
+    macs, params = profile(model, inputs=[input_map, input_map_radar])
     macs *= 2
     macs, params = clever_format([macs, params], "%.3f")
     print("FLOPs:", macs)
@@ -163,6 +154,6 @@ if __name__ == "__main__":
     t1 = time.time()
     test_times = 300
     for i in range(test_times):
-        output = model(input_map, input_map_radar, input_pc_radar)
+        output = model(input_map, input_map_radar)
     t2 = time.time()
     print("fps:", (1 / ((t2 - t1) / test_times)))
