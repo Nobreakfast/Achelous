@@ -79,6 +79,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--pth", default="", type=str, help="pretrained model path")
     parser.add_argument("--pm", default=0, type=float, help="pruning amount")
+    parser.add_argument("--pa", default="uniform", type=str, help="pruning algroithm")
     parser.add_argument("--log_dir", default="plogs/01", type=str, help="log dir")
 
     args = parser.parse_args()
@@ -451,7 +452,7 @@ if __name__ == "__main__":
             model,
             example_input,
             args.pm,
-            "erk",
+            args.pa,
             "cpu",
             imt_dict,
             ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
