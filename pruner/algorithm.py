@@ -6,7 +6,7 @@ from thop import profile, clever_format
 from torch import profiler
 
 from .backward2node import __backward2node, __get_groups
-from .node import ConvNode
+from .node import ConvNode, LinearNode
 
 
 @torch.no_grad()
@@ -69,14 +69,35 @@ def prune_model(
     prune_fn(groups, sparsity, imk)
 
     groups_hascat = []
+    groups_haspool = []
     for g in groups:
         if g.hascat():
             groups_hascat.append(g)
             continue
-        if g.nodes[0].name == "image_radar_encoder.fpn.spp.cv1.conv":
-            print("hello")
+        if g.haspool():
+            groups_haspool.append(g)
+            continue
+        # for n in g.nodes:
+        #     if n.name in [
+        #         "image_radar_encoder.fpn.spp.cv1.conv",
+        #         "image_radar_encoder.fpn.spp.cv2.conv",
+        #         "image_radar_encoder.fpn.spp.m.0",
+        #     ]:
+        #         print("hello")
+        g.prune(g.sparsity)
+    for g in groups_haspool:
+        # for n in g.nodes:
+        #     if n.name in [
+        #         "image_radar_encoder.fpn.spp.cv1.conv",
+        #         "image_radar_encoder.fpn.spp.cv2.conv",
+        #         "image_radar_encoder.fpn.spp.m.0",
+        #     ]:
+        #         print("hello")
         g.prune(g.sparsity)
     for g in groups_hascat:
+        # for n in g.nodes:
+        #     if n.name in ["image_radar_encoder.fpn.spp.cv2.conv.CatB"]:
+        #         print("hello")
         g.prune(g.sparsity)
 
     for node in node_dict.values():
@@ -95,6 +116,10 @@ def uniform(groups, sparsity, imk):
 
 
 def erk(groups, sparsity, imk):
+    """
+    erk = 1 - (in_ch + out_ch + k_h + k_w) / (in_ch * out_ch * k_h * k_w) if convolution
+    erk = 1 - (in_ch + out_ch) / (in_ch * out_ch) if linear
+    """
     for g in groups:
         if g.haskey(imk):
             continue
@@ -119,19 +144,63 @@ def erk(groups, sparsity, imk):
 
 
 def featio(groups, sparsity, imk):
+    """
+    featio = (in_ch * strides[0] * strides[1]) / (out_ch * nonzeros_count)
+    featio = sum(in_ch * strides[0] * strides[1] / out_ch) / sum(nonzeros_count)
+    """
+    score_dict = {}
     for g in groups:
         if g.haskey(imk):
             continue
-        featio_list = [1]
+        score_dict[g] = {}
+        score_dict[g]["score"] = torch.tensor([])
+        score_dict[g]["pruned_out_ch"] = 0
+        feati = 0
+        feato = 0
+        N = 0
+        score_dict[g]["out_ch"] = g.channel - score_dict[g]["pruned_out_ch"]
         for n in g.nodes:
-            if not hasattr(n.module, "weight"):
-                continue
             if isinstance(n, ConvNode):
-                strides = n.module.stride
-                featio = (n.in_ch * strides[0] * strides[1]) / (
-                    n.out_ch * n.module.weight.data.nelement()
+                feati += n.in_ch * n.module.stride[0] * n.module.stride[1]
+                feato += score_dict[g]["out_ch"]
+                N += (
+                    n.in_ch
+                    * score_dict[g]["out_ch"]
+                    * n.module.kernel_size[0]
+                    * n.module.kernel_size[1]
                 )
+            elif isinstance(n, LinearNode):
+                feati += n.in_ch
+                feato += score_dict[g]["out_ch"]
+                N += n.in_ch * score_dict[g]["out_ch"]
             else:
-                featio = (n.in_ch) / (n.out_ch * n.module.weight.data.nelement())
-            featio_list.append(1 - 1 / featio)
-        g.sparsity = sparsity * min(featio_list)
+                continue
+        if N == 0:
+            g.sparsity = sparsity
+            score_dict.pop(g)
+            continue
+        score_dict[g]["N"] = N
+        featio = feati / feato / N
+        score_dict[g]["score"] = featio * torch.randn(N).abs()
+    score_list = torch.cat(
+        tuple([score_dict[key]["score"] for key in score_dict.keys()]), dim=0
+    )
+    number = int(sparsity * len(score_list))
+    kth = torch.kthvalue(score_list, number)[0]
+    for key in score_dict.keys():
+        score_dict[key]["pruned_count"] = torch.sum(score_dict[key]["score"] < kth)
+        score_dict[key]["pruned_out_ch"] = int(
+            score_dict[key]["out_ch"]
+            * (score_dict[key]["pruned_count"] / score_dict[key]["N"])
+        )
+        key.sparsity = score_dict[key]["pruned_count"] / score_dict[key]["N"]
+
+
+def random(groups, sparsity, imk):
+    """
+    This aimed to test the different sparsity applied to different groups.
+    """
+    for g in groups:
+        if g.haskey(imk):
+            continue
+        g.sparsity = sparsity * torch.rand(1)

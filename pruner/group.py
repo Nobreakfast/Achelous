@@ -33,6 +33,12 @@ class BaseGroup(abc.ABC):
                 return True
         return False
 
+    def haspool(self):
+        for n in self.nodes:
+            if isinstance(n, PoolNode):
+                return True
+        return False
+
     def haskey(self, key):
         for n in self.nodes:
             if n.name in key:
@@ -104,6 +110,9 @@ class CurrentGroup(BaseGroup):
             // split
             // cat
         )
+        if prune_num == self.channel // split // cat:
+            prune_num -= round_to
+
         tmp_prune_idx = torch.cat(
             [
                 torch.randperm(self.channel // split // cat)[:prune_num]

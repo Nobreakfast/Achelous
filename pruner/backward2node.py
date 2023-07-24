@@ -140,7 +140,7 @@ def __find_next_keynode(node_list):
         elif node.node_type in ["out_out", "activation", "pool"]:
             keynode.append(node)
             keynode.extend(__find_next_keynode(node.next))
-    return keynode
+    return list(set(keynode))
 
 
 def __find_prev_keynode(node_list):
@@ -151,7 +151,7 @@ def __find_prev_keynode(node_list):
         elif node.node_type in ["out_out", "activation", "pool"]:
             keynode.append(node)
             keynode.extend(__find_prev_keynode(node.prev))
-    return keynode
+    return list(set(keynode))
 
 
 def __sum_output(output, count):

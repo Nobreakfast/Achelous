@@ -71,7 +71,7 @@ def __test_achelous():
         model,
         example_input,
         sparsity,
-        "erk",
+        "featio",
         dev,
         imt_dict,
         ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
