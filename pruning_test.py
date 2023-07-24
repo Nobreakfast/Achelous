@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pruner.backward2node import prune_model, test_speed
+from pruner.algorithm import prune_model, test_speed
 from pruner import mvit
 from pruner.node import MVitNode
 
@@ -39,7 +39,7 @@ def __test_achelous():
     from pruner.node import MVitNode, DCNNode, ShuffleAttnNode, GhostModuleNode, ecaNode
 
     test_epoch = 1
-    prune_ratio = 0.7
+    sparsity = 0.7
     model = Achelous3T(
         resolution=320,
         num_det=7,
@@ -64,19 +64,21 @@ def __test_achelous():
         torch.randn(1, 3, 320, 320).to(device),
         torch.randn(1, 3, 320, 320).to(device),
     ]
-    test_speed(model, example_input, test_epoch, dev)
+    # test_speed(model, example_input, test_epoch, dev)
     model.cpu()
     example_input = [i.cpu() for i in example_input]
     prune_model(
         model,
         example_input,
-        prune_ratio,
+        sparsity,
+        "erk",
         dev,
         imt_dict,
+        ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
     )
     model.to(device)
     example_input = [i.to(device) for i in example_input]
-    test_speed(model, example_input, test_epoch, dev)
+    # test_speed(model, example_input, test_epoch, dev)
 
 
 def main():

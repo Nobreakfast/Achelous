@@ -25,6 +25,7 @@ class BaseGroup(abc.ABC):
         self.type = type
         self.next_group = None
         self.channel = self.get_info()
+        self.sparsity = 0
 
     def hascat(self):
         for n in self.nodes:

@@ -347,19 +347,19 @@ def __backward2node(model, example_input, imt_dict):
                 if i.input is grad.metadata["input"]:
                     i.add_next(node_dict[g_key])
                     i.add_level(level)
-    ignore_node = []
+    ignore_nodes = []
     for node in node_dict.values():
         node.next = __find_next_keynode(node.next)
         node.prev = __find_prev_keynode(node.prev)
         if isinstance(node, OutputNode):
             for sub_n in node.prev:
                 if sub_n.node_type == "in_out":
-                    ignore_node.append(sub_n)
+                    ignore_nodes.append(sub_n)
                 else:
-                    ignore_node.extend(sub_n.prev)
+                    ignore_nodes.extend(sub_n.prev)
 
     print("=" * 10, "Insert Relation", "=" * 10) if DEBUG else None
-    return node_dict, ignore_node
+    return node_dict, ignore_nodes
 
 
 def __get_all_next(node, cl=[]):
@@ -424,74 +424,6 @@ def __get_groups(node_dict):
             checked_list.remove(n.name)
         groups.append(group)
     return groups
-
-
-@torch.no_grad()
-def test_speed(model, example_input, epoch=30, device="cpu"):
-    epoch = epoch
-    for i in range(epoch):
-        model(*example_input)
-    import time
-
-    activity = (
-        profiler.ProfilerActivity.CPU
-        if device == "cpu"
-        else profiler.ProfilerActivity.CUDA
-    )
-    sort_by = "cpu_time_total" if device == "cpu" else "cuda_time_total"
-    with profiler.profile(activities=[activity], record_shapes=True) as prof:
-        with profiler.record_function("model_inference"):
-            model(*example_input)
-    print(prof.key_averages().table(sort_by=sort_by, row_limit=20))
-    start = time.time()
-    for i in tqdm.trange(epoch):
-        model(*example_input)
-    end = time.time()
-    inf_time = (end - start) / epoch / 1e-3
-    print(f"time: {inf_time} ms, FPS: {1000/inf_time}")
-
-
-def __get_flops(model, example_input, device):
-    model.to(device)
-    if isinstance(example_input, torch.Tensor):
-        example_input = [example_input.to(device)]
-    elif isinstance(example_input, dict):
-        example_input = [v.to(device) for v in example_input.values()]
-    elif isinstance(example_input, (list, tuple)):
-        example_input = [v.to(device) for v in example_input]
-    flops, params = profile(model, inputs=example_input)
-    print(clever_format([flops, params], "%.3f"))
-    return flops, params
-
-
-def prune_model(model, example_input, prune_rate=0.7, device="cpu", imt_dict={}):
-    device = torch.device(device)
-    model.eval()
-    print("=" * 20, "Original Model", "=" * 20)
-    __get_flops(model, example_input, device)
-    print("=" * 20, "Original Model", "=" * 20)
-
-    node_dict, ignore_node = __backward2node(model, example_input, imt_dict)
-    groups = __get_groups(node_dict)
-    groups_hascat = []
-    for g in groups:
-        if g.haskey(
-            ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"]
-            + [n.name for n in ignore_node]
-        ):
-            continue
-        if g.hascat():
-            groups_hascat.append(g)
-            continue
-        g.prune(prune_rate)
-    for g in groups_hascat:
-        g.prune(prune_rate)
-    for node in node_dict.values():
-        node.execute()
-
-    print("=" * 20, "Pruned Model", "=" * 20)
-    __get_flops(model, example_input, device)
-    print("=" * 20, "Pruned Model", "=" * 20)
 
 
 def main():

@@ -35,7 +35,7 @@ import torch_pruning as tp
 import pruner.utils as pruner_utils
 
 # pruning
-from pruner.backward2node import prune_model, test_speed
+from pruner.algorithm import prune_model, test_speed
 import backbone.attention_modules.shuffle_attention as sa
 import backbone.radar.RadarEncoder as re
 from backbone.conv_utils.dcn import DeformableConv2d
