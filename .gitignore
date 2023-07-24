@@ -1,4 +1,4 @@
-2007*.txt
+# 2007*.txt
 logs*/
 exp*
 .temp_miou_out/
