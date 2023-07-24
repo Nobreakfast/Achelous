@@ -451,8 +451,10 @@ if __name__ == "__main__":
             model,
             example_input,
             args.pm,
+            "erk",
             "cpu",
             imt_dict,
+            ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
         )
         model.cuda(local_rank)
 
