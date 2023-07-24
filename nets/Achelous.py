@@ -128,7 +128,7 @@ if __name__ == "__main__":
         num_seg=9,
         phi="S2",
         resolution=320,
-        backbone="pf",
+        backbone="rv",
         neck="gdf",
         pc_channels=6,
         pc_classes=8,
