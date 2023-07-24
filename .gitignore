@@ -1,5 +1,6 @@
 # 2007*.txt
 logs*/
+plogs*/
 exp*
 .temp_miou_out/
 .temp_map_out/
