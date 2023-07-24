@@ -123,13 +123,13 @@ if __name__ == "__main__":
     input_map = torch.randn((1, 3, 320, 320)).to(device)
     input_map_radar = torch.randn((1, 3, 320, 320)).to(device)
     input_pc_radar = torch.randn((1, 6, 256)).to(device)
-    model = Achelous(
+    model = Achelous3T(
         num_det=8,
         num_seg=9,
-        phi="S0",
+        phi="S2",
         resolution=320,
-        backbone="en",
-        neck="cdf",
+        backbone="pf",
+        neck="gdf",
         pc_channels=6,
         pc_classes=8,
         nano_head=True,
