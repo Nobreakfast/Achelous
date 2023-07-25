@@ -63,6 +63,7 @@ if __name__ == "__main__":
         default="E:/Big_Datasets/water_surface/benchmark_new/WaterScenes_new",
     )
     parser.add_argument("--pt", default="", type=str, help="pretrained model path")
+    parser.add_argument("--log_dir", default="plogs/01", type=str, help="log dir")
 
     args = parser.parse_args()
 
