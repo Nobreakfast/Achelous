@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 import tqdm
+from tqdm import trange
 from thop import profile, clever_format
 from torch import profiler
 
@@ -194,6 +195,70 @@ def featio(groups, sparsity, imk):
             * (score_dict[key]["pruned_count"] / score_dict[key]["N"])
         )
         key.sparsity = score_dict[key]["pruned_count"] / score_dict[key]["N"]
+
+
+def featio50(groups, sparsity, imk):
+    epoch = 50
+    # init score_dict
+    score_dict = {}
+    num_all = 0
+    for g in groups:
+        if g.haskey(imk):
+            continue
+        score_dict[g] = {}
+        score_dict[g]["pruned_out_ch"] = 0
+        N = 0
+        for n in g.nodes:
+            if isinstance(n, (ConvNode, LinearNode)):
+                N += n.module.weight.numel()
+        if N == 0:
+            g.sparsity = sparsity
+            score_dict.pop(g)
+            continue
+        else:
+            num_all += N
+
+    num_toprune = int(sparsity * num_all)
+    num_toprune_each = int(num_toprune / epoch)
+    # iterative featio
+    for i in trange(epoch):
+        for g in score_dict.keys():
+            score_dict[g]["score"] = torch.tensor([])
+            feati = 0
+            feato = 0
+            N = 0
+            score_dict[g]["out_ch"] = g.channel - score_dict[g]["pruned_out_ch"]
+            for n in g.nodes:
+                if isinstance(n, ConvNode):
+                    feati += n.in_ch * n.module.stride[0] * n.module.stride[1]
+                    feato += score_dict[g]["out_ch"]
+                    N += (
+                        n.in_ch
+                        * score_dict[g]["out_ch"]
+                        * n.module.kernel_size[0]
+                        * n.module.kernel_size[1]
+                    )
+                elif isinstance(n, LinearNode):
+                    feati += n.in_ch
+                    feato += score_dict[g]["out_ch"]
+                    N += n.in_ch * score_dict[g]["out_ch"]
+                else:
+                    continue
+            score_dict[g]["N"] = N
+            featio = feati / feato / N
+            score_dict[g]["score"] = featio * torch.randn(N).abs()
+        score_list = torch.cat(
+            tuple([score_dict[key]["score"] for key in score_dict.keys()]), dim=0
+        )
+        kth = torch.kthvalue(score_list, num_toprune_each)[0]
+        for key in score_dict.keys():
+            score_dict[key]["pruned_count"] = torch.sum(score_dict[key]["score"] < kth)
+            score_dict[key]["pruned_out_ch"] += int(
+                score_dict[key]["out_ch"]
+                * (score_dict[key]["pruned_count"] / score_dict[key]["N"])
+            )
+    for key in score_dict.keys():
+        key.sparsity = score_dict[key]["pruned_out_ch"] / key.channel
 
 
 def random(groups, sparsity, imk):
