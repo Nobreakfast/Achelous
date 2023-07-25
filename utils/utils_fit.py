@@ -144,7 +144,7 @@ def fit_one_epoch(
                     radar_pc_labels,
                 )
             else:
-                outputs, outputs_seg, outputs_seg_w  = model_train(images, radars)
+                outputs, outputs_seg, outputs_seg_w = model_train(images, radars)
 
             # ----------------------------------- 计算损失 ------------------------------------ #
             if focal_loss:
@@ -298,7 +298,7 @@ def fit_one_epoch(
                         "se seg loss": total_loss_seg / (iteration + 1),
                         "wl seg loss": total_loss_seg_w / (iteration + 1),
                         "pc seg loss": total_loss_seg_pc / (iteration + 1),
-                        "total loss": total_loss / (iteration + 1),
+                        "total loss": total_loss.item() / (iteration + 1),
                         "f score se": total_f_score / (iteration + 1),
                         "f score wl": total_f_score_w / (iteration + 1),
                         "lr": get_lr(optimizer),
@@ -310,7 +310,7 @@ def fit_one_epoch(
                         "detection loss": total_loss_det / (iteration + 1),
                         "se seg loss": total_loss_seg / (iteration + 1),
                         "wl seg loss": total_loss_seg_w / (iteration + 1),
-                        "total loss": total_loss / (iteration + 1),
+                        "total loss": total_loss.item() / (iteration + 1),
                         "f score se": total_f_score / (iteration + 1),
                         "f score wl": total_f_score_w / (iteration + 1),
                         "lr": get_lr(optimizer),
