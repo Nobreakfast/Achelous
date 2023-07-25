@@ -216,7 +216,7 @@ if __name__ == "__main__":
     #   （二）此处设置评估参数较为保守，目的是加快评估速度。
     # ------------------------------------------------------------------#
     eval_flag = True
-    eval_period = 5
+    eval_period = 1
     # ------------------------------------------------------------------#
     #   num_workers     用于设置是否使用多线程读取数据
     #                   开启后会加快数据读取速度，但是会占用更多内存
@@ -335,7 +335,8 @@ if __name__ == "__main__":
     # ------------------------------------------------------#
     #   加载模型
     # ------------------------------------------------------#
-    model = torch.load(args.pt).eval()
+    model = torch.load(args.pt).cuda(local_rank).eval()
+    epoch = 0
     # ----------------------#
     #   获得损失函数
     # ----------------------#
@@ -616,29 +617,6 @@ if __name__ == "__main__":
         # ---------------------------------------#
         #   构建Dataloader。
         # ---------------------------------------#
-        if is_radar_pc_seg:
-            gen_val = DataLoader(
-                val_dataset,
-                shuffle=shuffle,
-                batch_size=batch_size,
-                num_workers=num_workers,
-                pin_memory=True,
-                drop_last=True,
-                collate_fn=yolo_dataset_collate_all,
-                sampler=val_sampler,
-            )
-
-        else:
-            gen_val = DataLoader(
-                val_dataset,
-                shuffle=shuffle,
-                batch_size=batch_size,
-                num_workers=num_workers,
-                pin_memory=True,
-                drop_last=True,
-                collate_fn=yolo_dataset_collate,
-                sampler=val_sampler,
-            )
 
         # ----------------------#
         #   记录eval的map曲线
@@ -723,22 +701,9 @@ if __name__ == "__main__":
         #   开始模型评估
         # ---------------------------------------#
         train_index = 0
-
-        gen_val = DataLoader(
-            val_dataset,
-            shuffle=shuffle,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            pin_memory=True,
-            drop_last=True,
-            collate_fn=yolo_dataset_collate,
-            sampler=val_sampler,
-        )
-
-        gen_val.dataset.epoch_now = epoch
-
+        model_train_eval = model_train.eval()
         eval_callback.on_epoch_end(epoch + 1, model_train_eval)
         eval_callback_seg.on_epoch_end(epoch + 1, model_train_eval)
-        eval_callback_seg_w.on_epoch_end(epoch + 1, model_train_eval)
+        eval_callback_seg_wl.on_epoch_end(epoch + 1, model_train_eval)
         if is_radar_pc_seg:
             eval_callback_seg_pc.on_epoch_end(epoch + 1, model_train_eval)
