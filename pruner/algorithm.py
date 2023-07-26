@@ -7,7 +7,7 @@ from thop import profile, clever_format
 from torch import profiler
 
 from .backward2node import __backward2node, __get_groups
-from .node import ConvNode, LinearNode
+from .node import InOutNode, CustomNode, ConvNode, LinearNode
 
 
 @torch.no_grad()
@@ -209,8 +209,11 @@ def featio50(groups, sparsity, imk):
         score_dict[g]["pruned_out_ch"] = 0
         N = 0
         for n in g.nodes:
-            if isinstance(n, (ConvNode, LinearNode)):
-                N += n.module.weight.numel()
+            if isinstance(n, InOutNode):
+                if isinstance(n, CustomNode):
+                    N += n.prunable_weight_count()
+                else:
+                    N += n.module.weight.numel()
         if N == 0:
             g.sparsity = sparsity
             score_dict.pop(g)
@@ -229,6 +232,8 @@ def featio50(groups, sparsity, imk):
             N = 0
             score_dict[g]["out_ch"] = g.channel - score_dict[g]["pruned_out_ch"]
             for n in g.nodes:
+                if not isinstance(n, InOutNode):
+                    continue
                 if isinstance(n, ConvNode):
                     feati += n.in_ch * n.module.stride[0] * n.module.stride[1]
                     feato += score_dict[g]["out_ch"]
@@ -242,8 +247,13 @@ def featio50(groups, sparsity, imk):
                     feati += n.in_ch
                     feato += score_dict[g]["out_ch"]
                     N += n.in_ch * score_dict[g]["out_ch"]
+                elif isinstance(n, CustomNode):
+                    feati += n.in_ch
+                    feato += score_dict[g]["out_ch"]
+                    N += n.prunable_weight_count() * score_dict[g]["out_ch"] / n.out_ch
                 else:
                     continue
+            N = int(N)
             score_dict[g]["N"] = N
             featio = feati / feato / N
             score_dict[g]["score"] = featio * torch.randn(N).abs()

@@ -1,0 +1,10 @@
+#+title: Structural Pruning of Achelous
+
+* model record
+    - mv-gdf-S2
+        - mv-gdf-S0
+        - mv-gdf-S2-featio50-p0.76
+        - mv-gdf-S2-erk-p0.35
+
+* results
+

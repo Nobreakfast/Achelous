@@ -39,7 +39,7 @@ def __test_achelous():
     from pruner.node import MVitNode, DCNNode, ShuffleAttnNode, GhostModuleNode, ecaNode
 
     test_epoch = 1
-    sparsity = 0.7
+    sparsity = 0.76
     model = Achelous3T(
         resolution=320,
         num_det=7,

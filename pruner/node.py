@@ -471,10 +471,23 @@ class TransposeNode(ReshapeNode):
 ########################
 
 
+######## CustomNode ########
+class CustomNode(abc.ABC):
+    def __init__(self):
+        pass
+
+    @abc.abstractmethod
+    def prunable_weight_count(self):
+        pass
+
+
 ######## MVitNode ########
-class MVitNode(OutOutNode):
+class MVitNode(OutOutNode, CustomNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module)
+
+    def prunable_weight_count(self):
+        return 0
 
     def get_channels(self):
         self.in_ch = self.module.layers[0][0].norm.normalized_shape[0]
@@ -516,9 +529,12 @@ class MVitNode(OutOutNode):
 
 
 ######## DCNNode ########
-class DCNNode(InOutNode):
+class DCNNode(InOutNode, CustomNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module)
+
+    def prunable_weight_count(self):
+        return self.module.regular_conv.weight.numel()
 
     def get_channels(self):
         self.in_ch = self.module.regular_conv.in_channels
@@ -541,10 +557,13 @@ class DCNNode(InOutNode):
 
 
 ######## ShuffleAttnNode ########
-class ShuffleAttnNode(OutOutNode):
+class ShuffleAttnNode(OutOutNode, CustomNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module)
         self.round_to = self.module.G * 2
+
+    def prunable_weight_count(self):
+        return self.module.channel // self.module.G
 
     def get_channels(self):
         self.in_ch = self.module.channel
@@ -574,11 +593,17 @@ class ShuffleAttnNode(OutOutNode):
 
 
 ######## GhostModuleNode ########
-class GhostModuleNode(InOutNode):
+class GhostModuleNode(InOutNode, CustomNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name, module)
         self.ratio = self.module.ratio
         self.cat_idx1 = 2
+
+    def prunable_weight_count(self):
+        return (
+            self.module.primary_conv[0].weight.numel()
+            + self.module.cheap_operation[0].weight.numel()
+        )
 
     def get_channels(self):
         self.in_ch = self.module.primary_conv[0].in_channels
@@ -652,10 +677,13 @@ class GhostModuleNode(InOutNode):
 
 
 ######## ecaNode ########
-class ecaNode(ActiNode):
+class ecaNode(ActiNode, CustomNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name)
         self.module = module
 
     def execute(self):
         pass
+
+    def prunable_weight_count(self):
+        return 0
