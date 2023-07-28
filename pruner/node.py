@@ -20,6 +20,14 @@ params:
 """
 
 
+def _get_weight_count(module):
+    N = 0
+    for param in module.modules():
+        if isinstance(param, (nn.Conv2d, nn.Linear)):
+            N += torch.numel(param.weight)
+    return N
+
+
 #########################
 ####### BaseNode ########
 #########################
@@ -87,9 +95,15 @@ class BaseNode(abc.ABC):
         return self.in_ch, self.out_ch
 
     def get_out_channel(self):
-        if self.out_ch == 0:
-            self.out_ch = self.next[0].get_channels()[0]
-            self.in_ch = self.out_ch
+        # if self.out_ch == 0:
+        #     self.out_ch = self.next[0].get_channels()[0]
+        #     self.in_ch = self.out_ch
+        node = self
+        while self.out_ch == 0:
+            self.out_ch = node.next[0].get_channels()[0]
+            node = node.next[0]
+
+        self.in_ch = self.out_ch
         return self.in_ch, self.out_ch
 
     def prune(self, prune_idx, dim):
@@ -243,6 +257,20 @@ class LayerNormNode(OutOutNode):
         self._prune_weight()
 
 
+####### GroupNormNode ########
+class GroupNormNode(OutOutNode):
+    def __init__(self, name: str, module) -> None:
+        super().__init__(name, module)
+
+    def get_channels(self):
+        return self.module.num_channels, self.module.num_channels
+
+    def execute(self):
+        self._prune_weight()
+        self.module.num_channels = len(self.saved_idx)
+        self.module.num_groups = len(self.saved_idx)
+
+
 ####### GroupConvNode ########
 class GroupConvNode(OutOutNode):
     def __init__(self, name: str, module) -> None:
@@ -364,7 +392,13 @@ class ConcatNode(RemapNode):
 class SplitNode(RemapNode):
     def __init__(self, name: str) -> None:
         super().__init__(name)
+
+    def update_info(self, grad):
+        self.in_ch = grad._saved_self_sizes[grad._saved_dim]
+        self.out_ch = grad._saved_split_size
+        self.ratio = int(self.in_ch / self.out_ch)
         self.split = self.ratio
+        self.round_to = self.split
 
     def get_channels(self):
         if self.in_ch != 0 and self.out_ch != 0:
@@ -374,8 +408,11 @@ class SplitNode(RemapNode):
             if next.in_ch == 0:
                 next.get_out_channel()
             if next.key:
-                self.in_ch.append(next.in_ch)
-        self.ratio = len(self.in_ch)
+                try:
+                    self.in_ch.extend(next.in_ch)
+                except:
+                    self.in_ch.append(next.in_ch)
+        self.ratio = len(self.in_ch) if len(self.in_ch) != 0 else 1
         self.in_ch = sum(self.in_ch)
         self.out_ch = self.in_ch // self.ratio
         return self.in_ch, self.out_ch
@@ -680,10 +717,153 @@ class GhostModuleNode(InOutNode, CustomNode):
 class ecaNode(ActiNode, CustomNode):
     def __init__(self, name: str, module) -> None:
         super().__init__(name)
-        self.module = module
 
     def execute(self):
         pass
 
     def prunable_weight_count(self):
+        N = 0
+        for m in self.module.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                N += m.weight.numel()
+        return N
+
+
+######## Attn4DNode ########
+class Attn4DNode(OutOutNode, CustomNode):
+    def __init__(self, name: str, module) -> None:
+        super().__init__(name, module)
+
+    def execute(self):
+        self.saved_idx = self._get_saved_idx(self.in_ch, self.prune_idx[0])
+        # stride conv
+        if self.module.stride_conv is not None:
+            self._prune_param(self.module.stride_conv[0].weight, self.saved_idx, 0)
+            self._prune_param(self.module.stride_conv[0].bias, self.saved_idx, 0)
+            self.module.stride_conv[0].in_channels = len(self.saved_idx)
+            self.module.stride_conv[0].out_channels = len(self.saved_idx)
+            self.module.stride_conv[0].groups = len(self.saved_idx)
+
+            self._prune_param(self.module.stride_conv[1].weight, self.saved_idx, 0)
+            self._prune_param(self.module.stride_conv[1].bias, self.saved_idx, 0)
+            self.module.stride_conv[1].num_features = len(self.saved_idx)
+            self.module.stride_conv[1].running_mean = self.module.stride_conv[
+                1
+            ].running_mean.data[self.saved_idx]
+            self.module.stride_conv[1].running_var = self.module.stride_conv[
+                1
+            ].running_var.data[self.saved_idx]
+
+        # prune q
+        for qkv in (self.module.q, self.module.k, self.module.v):
+            self._prune_param(qkv[0].weight, self.saved_idx, 1)
+            qkv[0].in_channels = len(self.saved_idx)
+        # prune proj
+        self._prune_param(self.module.proj[1].weight, self.saved_idx, 0)
+        self._prune_param(self.module.proj[1].bias, self.saved_idx, 0)
+        self.module.proj[1].out_channels = len(self.saved_idx)
+
+        self._prune_param(self.module.proj[2].weight, self.saved_idx, 0)
+        self._prune_param(self.module.proj[2].bias, self.saved_idx, 0)
+        self.module.proj[2].num_features = len(self.saved_idx)
+        self.module.proj[2].running_mean = self.module.proj[2].running_mean.data[
+            self.saved_idx
+        ]
+        self.module.proj[2].running_var = self.module.proj[2].running_var.data[
+            self.saved_idx
+        ]
+
+    def prunable_weight_count(self):
+        return _get_weight_count(self.module)
+
+    def get_channels(self):
+        self.in_ch = self.module.q[0].in_channels
+        self.out_ch = self.module.proj[1].out_channels
+        return self.in_ch, self.out_ch
+
+
+######## Attn4DDownNode ########
+class Attn4DDownNode(InOutNode, CustomNode):
+    def __init__(self, name: str, module) -> None:
+        super().__init__(name, module)
+
+    def execute(self):
+        self.saved_idx[0] = self._get_saved_idx(self.in_ch, self.prune_idx[0])
+        self.saved_idx[1] = self._get_saved_idx(self.out_ch, self.prune_idx[1])
+
+        # prune qkv
+        self._prune_param(self.module.q.local[0].weight, self.saved_idx[0], 0)
+        self._prune_param(self.module.q.local[0].bias, self.saved_idx[0], 0)
+        self.module.q.local[0].in_channels = len(self.saved_idx[0])
+        self.module.q.local[0].out_channels = len(self.saved_idx[0])
+        self.module.q.local[0].groups = len(self.saved_idx[0])
+
+        self._prune_param(self.module.q.proj[0].weight, self.saved_idx[0], 1)
+
+        for kv in (self.module.k, self.module.v):
+            self._prune_param(kv[0].weight, self.saved_idx[0], 1)
+            kv[0].in_channels = len(self.saved_idx[0])
+
+        # prune proj
+        self._prune_param(self.module.proj[1].weight, self.saved_idx[1], 0)
+        self._prune_param(self.module.proj[1].bias, self.saved_idx[1], 0)
+        self.module.proj[1].out_channels = len(self.saved_idx[1])
+
+        # prune proj bn
+        self._prune_param(self.module.proj[2].weight, self.saved_idx[1], 0)
+        self._prune_param(self.module.proj[2].bias, self.saved_idx[1], 0)
+        self.module.proj[2].num_features = len(self.saved_idx[1])
+        self.module.proj[2].running_mean = self.module.proj[2].running_mean.data[
+            self.saved_idx[1]
+        ]
+        self.module.proj[2].running_var = self.module.proj[2].running_var.data[
+            self.saved_idx[1]
+        ]
+
+    def prunable_weight_count(self):
+        return _get_weight_count(self.module)
+
+    def get_channels(self):
+        self.in_ch = self.module.q.local[0].in_channels
+        self.out_ch = self.module.proj[1].out_channels
+        return self.in_ch, self.out_ch
+
+
+######## emLayerNormNode ########
+class emLayerNormNode(OutOutNode, CustomNode):
+    def __init__(self, name: str, module) -> None:
+        super().__init__(name, module)
+
+    def get_channels(self):
+        return self.module.normalized_shape[0], self.module.normalized_shape[0]
+
+    def execute(self):
+        self._prune_weight()
+        self.module.normalized_shape = (len(self.saved_idx),)
+
+    def prunable_weight_count(self):
         return 0
+
+
+######## emPosEncNode ########
+class emPosEncNode(InOutNode, CustomNode):
+    def __init__(self, name: str, module) -> None:
+        super().__init__(name, module)
+
+    def execute(self):
+        # self.saved_idx[0] = self._get_saved_idx(self.in_ch, self.prune_idx[0])
+        self.saved_idx[1] = self._get_saved_idx(self.out_ch, self.prune_idx[1])
+
+        # self._prune_param(self.module.token_projection.weight, self.saved_idx[0], 1)
+        self._prune_param(self.module.token_projection.weight, self.saved_idx[1], 0)
+        self._prune_param(self.module.token_projection.bias, self.saved_idx[1], 0)
+        self.module.token_projection.out_channels = len(self.saved_idx[1])
+        self.module.dim = len(self.saved_idx[1])
+
+    def prunable_weight_count(self):
+        return self.module.token_projection.weight.numel()
+
+    def get_channels(self):
+        self.in_ch = self.module.token_projection.in_channels
+        self.out_ch = self.module.token_projection.out_channels
+        return self.in_ch, self.out_ch

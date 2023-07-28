@@ -42,6 +42,8 @@ POOLING_BACKWARD_TYPE = [
 ACTIVITION_BACKWARD_TYPE = [
     "ReluBackward0",
     "SiluBackward0",
+    "GeluBackward0",
+    "HardswishBackward0",
     "SigmoidBackward0",
     "TanhBackward0",
     "SoftmaxBackward0",
@@ -58,7 +60,7 @@ IGNORE_BACKWARD_TYPE = (
     # "TBackward0",
     "NoneType",
 )
-DEBUG = False
+DEBUG = True
 
 """
 START
@@ -180,7 +182,7 @@ def __init_dict_and_list(output):
             if sub_g[0].__class__.__name__ == "SumBackward0":
                 node_dict[f"output_{i}"] = OutputNode(f"output_{i}")
                 grad_list.append(
-                    [node_dict[f"output_{i}"], sub_g[0].next_functions[0][0], 0]
+                    [node_dict[f"output_{i}"], sub_g[0].next_functions[0][0]]
                 )
                 i += 1
             elif sub_g[0].__class__.__name__ == "AddBackward0":
@@ -236,8 +238,8 @@ def __backward2node(model, example_input, imt_dict):
     checked_list = []
     backward2key_dict = {}
     while len(grad_list) > 0:
-        [last, grad, level] = grad_list[0]
-        grad_list.remove([last, grad, level])
+        [last, grad] = grad_list[0]
+        grad_list.remove([last, grad])
         if [last, grad] in checked_list:
             continue
         else:
@@ -259,12 +261,12 @@ def __backward2node(model, example_input, imt_dict):
                 )
                 backward2key_dict[grad] = g_key
             node_dict[g_key].add_next(last)
-            node_dict[g_key].add_level(level)
+            # node_dict[g_key].add_level(level)
             # if not hasattr(grad.metadata["input"].grad_fn, "next_functions"):
             #     continue
             grad_list.append(
-                [node_dict[g_key], grad.metadata["input"].grad_fn, level + 1]
-            )
+                [node_dict[g_key], grad.metadata["input"].grad_fn]  # , level + 1]
+            ) if hasattr(grad.metadata["input"], "grad_fn") else None
             # grad_next = grad.metadata["input"].grad_fn.next_functions
             # for sub_g in grad_next:
             #     grad_list.append([node_dict[g_key], sub_g[0], level + 1])
@@ -277,6 +279,13 @@ def __backward2node(model, example_input, imt_dict):
                 g_key = module2key[grad.metadata["module"]]
             except:
                 g_key = last.name + "." + g_name[:4]
+                count = 0
+                tmp_g_key = g_key + str(count)
+                while tmp_g_key in node_dict.keys():
+                    count += 1
+                    tmp_g_key = g_key + str(count)
+                g_key = tmp_g_key
+
             if g_name == "ConvolutionBackward0":
                 if (
                     grad.metadata["module"].groups
@@ -304,13 +313,18 @@ def __backward2node(model, example_input, imt_dict):
                 node_dict[g_key] = NormNode(g_key, grad.metadata["module"])
             elif g_name == "NativeLayerNormBackward0":
                 node_dict[g_key] = LayerNormNode(g_key, grad.metadata["module"])
+            elif g_name == "NativeGroupNormBackward0":
+                node_dict[g_key] = GroupNormNode(g_key, grad.metadata["module"])
             elif g_name == "CatBackward0":
                 node_dict[g_key] = ConcatNode(g_key)
             elif g_name == "SplitBackward0":
                 node_dict[g_key] = SplitNode(g_key)
-                print(grad)
+                node_dict[g_key].update_info(grad)
             elif g_name == "AddBackward0":
-                node_dict[g_key] = AddNode(g_key)
+                if "module" in grad.metadata.keys():
+                    node_dict[g_key] = LinearNode(g_key, grad.metadata["module"])
+                else:
+                    node_dict[g_key] = AddNode(g_key)
             elif g_name == "SubBackward0":
                 node_dict[g_key] = SubNode(g_key)
             elif g_name in ACTIVITION_BACKWARD_TYPE:
@@ -329,24 +343,24 @@ def __backward2node(model, example_input, imt_dict):
                 print(f"Not supported {g_name}, please add patches") if DEBUG else None
                 grad_next = grad.next_functions
                 for sub_g in grad_next:
-                    grad_list.append([last, sub_g[0], level + 1])
+                    grad_list.append([last, sub_g[0]])  # , level + 1])
                 continue
             backward2key_dict[grad] = g_key
         # declare the relation
         node_dict[g_key].add_next(last)
-        node_dict[g_key].add_level(level)
+        # node_dict[g_key].add_level(level)
 
         # add next grad to the search list
         grad_next = grad.next_functions
         for sub_g in grad_next:
-            grad_list.append([node_dict[g_key], sub_g[0], level + 1])
+            grad_list.append([node_dict[g_key], sub_g[0]])  # , level + 1])
 
         # find input
         if "input" in grad.metadata.keys():
             for i in input_list:
                 if i.input is grad.metadata["input"]:
                     i.add_next(node_dict[g_key])
-                    i.add_level(level)
+                    # i.add_level(level)
     ignore_nodes = []
     for node in node_dict.values():
         node.next = __find_next_keynode(node.next)
@@ -405,11 +419,24 @@ def __get_groups(node_dict):
     checked_list = list(node_dict.keys())
     AddB_list = []
     groups = []
-    for name in checked_list:
-        if name[-4:] == "AddB":
+    for name in node_dict.keys():
+        if name[-5:] == "AddB0":
             checked_list.remove(name)
             AddB_list.append(name)
     checked_list = AddB_list + checked_list
+
+    for node_name in AddB_list:
+        if node_name not in checked_list:
+            continue
+        node = node_dict[node_name]
+        group = __get_group(node)
+        group = CurrentGroup(list(set(group)))
+        print("=" * 5, "group", [g.name for g in group.nodes]) if DEBUG else None
+        for n in group.nodes:
+            print("remove", n.name) if DEBUG else None
+            checked_list.remove(n.name)
+        groups.append(group)
+
     while checked_list:
         node_name = checked_list[0]
         node = node_dict[node_name]
@@ -422,6 +449,10 @@ def __get_groups(node_dict):
         for n in group.nodes:
             print("remove", n.name) if DEBUG else None
             checked_list.remove(n.name)
+            # try:
+            #     checked_list.remove(n.name)
+            # except:
+            #     pass
         groups.append(group)
     return groups
 

@@ -10,7 +10,7 @@ def __test_example():
     from pruner.test_model import ExampleModel
 
     model = ExampleModel().eval()
-    prune_model(model, torch.randn(1, 3, 4, 4), 0.7, "cpu")
+    prune_model(model, torch.randn(1, 3, 4, 4), 0.7, "random", "cpu")
 
 
 def __test_resnet18():
@@ -35,28 +35,49 @@ def __test_achelous():
     from backbone.conv_utils.ghost_conv import GhostModule
     from backbone.attention_modules.eca import eca_block
     import backbone.vision.mobilevit_modules.mobilevit as mv
+    import backbone.vision.ImageEncoder as IE
+    import backbone.vision.edgenext_modules as em
     from nets.Achelous import Achelous3T
-    from pruner.node import MVitNode, DCNNode, ShuffleAttnNode, GhostModuleNode, ecaNode
+    from pruner.node import (
+        MVitNode,
+        DCNNode,
+        ShuffleAttnNode,
+        GhostModuleNode,
+        ecaNode,
+        Attn4DNode,
+        Attn4DDownNode,
+        emLayerNormNode,
+        emPosEncNode,
+    )
 
     test_epoch = 1
-    sparsity = 0.76
+    sparsity = 0.7
+    # backbone = ["mv", "ef", "pf"]
     model = Achelous3T(
         resolution=320,
         num_det=7,
         num_seg=9,
         phi="S2",
-        backbone="mv",
+        backbone="mv",  # FIXME: en, ev, rv
         neck="gdf",
         spp=True,
         nano_head=False,
     )
     imt_dict = {
-        mv.Transformer: MVitNode,
-        DeformableConv2d: DCNNode,
-        sa.ShuffleAttention: ShuffleAttnNode,
         GhostModule: GhostModuleNode,
         eca_block: ecaNode,
+        DeformableConv2d: DCNNode,
+        sa.ShuffleAttention: ShuffleAttnNode,
+        # for mobilevit
+        mv.Transformer: MVitNode,
+        # for efficientformer
+        IE.Attention4D: Attn4DNode,
+        IE.Attention4DDownsample: Attn4DDownNode,
+        # # for edgenext
+        # em.layers.LayerNorm: emLayerNormNode,
+        # em.layers.PositionalEncodingFourier: emPosEncNode,
     }
+    # TODO: pruning bundling
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     device = torch.device(dev)
     model.to(device).eval()
@@ -71,7 +92,7 @@ def __test_achelous():
         model,
         example_input,
         sparsity,
-        "featio50",
+        "random",
         dev,
         imt_dict,
         ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],

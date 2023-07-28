@@ -29,7 +29,7 @@ class BaseGroup(abc.ABC):
 
     def hascat(self):
         for n in self.nodes:
-            if isinstance(n, ConcatNode):
+            if isinstance(n, (ConcatNode, SplitNode)):
                 return True
         return False
 
@@ -54,10 +54,10 @@ class BaseGroup(abc.ABC):
         print(f"group nodes: {[node.name for node in self.nodes]}")
         print(f"group channels: {self.channel}")
 
-    def prune(self, prune_idx, dim):
+    def prune(self, prune_idx, dim, length=0):
         for node in self.nodes:
             if isinstance(node, ConcatNode) and dim == 0:
-                node.prune(prune_idx, dim, self.channel)
+                node.prune(prune_idx, dim, length)
                 continue
             node.prune(prune_idx, dim)
 
@@ -88,15 +88,60 @@ class CurrentGroup(BaseGroup):
     def print_next_info(self):
         self.next_group.print_info()
 
+    # def prune(self, prune_ratio):
+    #     if isinstance(self.nodes[0], ConcatNode):
+    #         prune_idx = self.nodes[0].prune_idx[1]
+    #         self.next_group.prune(prune_idx)
+    #         return
+    #     round_to = max(self.round_to)
+    #     split = 1
+    #     cat = 1
+    #     for node in self.next_group.nodes:
+    #         if isinstance(node, OutputNode):
+    #             return
+    #         if hasattr(node, "split"):
+    #             round_to *= node.split
+    #             split = node.split
+    #             break
+    #     for node in self.nodes:
+    #         if hasattr(node, "cat_idx1"):
+    #             cat = node.cat_idx1
+    #             round_to *= cat
+    #             break
+
+    #     prune_num = (
+    #         int(math.floor(self.channel * prune_ratio / round_to) * round_to)
+    #         // split
+    #         // cat
+    #     )
+    #     if prune_num == self.channel // split // cat:
+    #         prune_num -= round_to
+
+    #     tmp_prune_idx = torch.cat(
+    #         [
+    #             torch.randperm(self.channel // split // cat)[:prune_num]
+    #             + i * self.channel // split // cat
+    #             for i in range(cat)
+    #         ]
+    #     )
+    #     prune_idx = torch.cat(
+    #         [tmp_prune_idx + i * self.channel / split for i in range(split)]
+    #     )
+    #     for node in self.nodes:
+    #         if node.prune_idx[1] != []:
+    #             # print("=" * 20, "node:", node.name)
+    #             prune_idx = node.prune_idx[1]
+    #             break
+    #     super().prune(prune_idx, 1)
+    #     self.next_group.prune(prune_idx, self.channel)
     def prune(self, prune_ratio):
         round_to = max(self.round_to)
         split = 1
-        cat = 1
+        cat = 1  # for GhostModule, FIXME: ugly
         for node in self.next_group.nodes:
             if isinstance(node, OutputNode):
                 return
             if hasattr(node, "split"):
-                round_to *= node.split
                 split = node.split
                 break
         for node in self.nodes:
@@ -110,6 +155,9 @@ class CurrentGroup(BaseGroup):
             // split
             // cat
         )
+        # if split != 1:
+        #     print("hello:", prune_num)
+
         if prune_num == self.channel // split // cat:
             prune_num -= round_to
 
@@ -123,13 +171,17 @@ class CurrentGroup(BaseGroup):
         prune_idx = torch.cat(
             [tmp_prune_idx + i * self.channel / split for i in range(split)]
         )
+
         for node in self.nodes:
+            # if (
+            #     node.name
+            #     == "image_radar_encoder.fpn.backbone.stages.1.2.norm.AddB0.AddB0.CatB0"
+            # ):
+            #     print("hello")
             if node.prune_idx[1] != []:
-                # print("=" * 20, "node:", node.name)
                 prune_idx = node.prune_idx[1]
-                break
         super().prune(prune_idx, 1)
-        self.next_group.prune(prune_idx)
+        self.next_group.prune(prune_idx, self.channel)
 
 
 #########################
@@ -156,9 +208,15 @@ class NextGroup(BaseGroup):
         # assert len(in_ch) == 1, f"in_ch: {in_ch}"
         return max(in_ch)
 
-    def prune(self, prune_idx):
+    def prune(self, prune_idx, length=0):
+        # for node in self.nodes:
+        # if (
+        #     node.name
+        #     == "image_radar_encoder.fpn.backbone.stages.1.2.norm.AddB0.AddB0.CatB0"
+        # ):
+        #     print("hello")
         if isinstance(prune_idx, list):
             for node, count in zip(self.nodes, range(len(prune_idx))):
                 node.prune(prune_idx[count], 0)
         else:
-            super().prune(prune_idx, 0)
+            super().prune(prune_idx, 0, length)

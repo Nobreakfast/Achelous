@@ -8,3 +8,8 @@
 
 * results
 
+* How to Run
+
+#+begin_src sh
+python train_prune.py --backbone mv --neck gdf --phi S2 --lr_init 0.01 --data_root /home/zhaohaocheng/Data/WaterScenes_new --bs 32 --pm 0.7 --pa erk --log_dir plogs/v2/mv-gdf-S2-0.7
+#+end_src

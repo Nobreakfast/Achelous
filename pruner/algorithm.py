@@ -78,27 +78,10 @@ def prune_model(
         if g.haspool():
             groups_haspool.append(g)
             continue
-        # for n in g.nodes:
-        #     if n.name in [
-        #         "image_radar_encoder.fpn.spp.cv1.conv",
-        #         "image_radar_encoder.fpn.spp.cv2.conv",
-        #         "image_radar_encoder.fpn.spp.m.0",
-        #     ]:
-        #         print("hello")
         g.prune(g.sparsity)
     for g in groups_haspool:
-        # for n in g.nodes:
-        #     if n.name in [
-        #         "image_radar_encoder.fpn.spp.cv1.conv",
-        #         "image_radar_encoder.fpn.spp.cv2.conv",
-        #         "image_radar_encoder.fpn.spp.m.0",
-        #     ]:
-        #         print("hello")
         g.prune(g.sparsity)
     for g in groups_hascat:
-        # for n in g.nodes:
-        #     if n.name in ["image_radar_encoder.fpn.spp.cv2.conv.CatB"]:
-        #         print("hello")
         g.prune(g.sparsity)
 
     for node in node_dict.values():

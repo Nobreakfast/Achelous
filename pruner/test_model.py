@@ -29,11 +29,8 @@ class ExampleModel(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x1, x2 = torch.chunk(x, 2, dim=1)
-        x3 = x2
-        x4 = x2 + x3
         x1 = self.conv2(x1)
-        x2 = self.conv3(x4)
-        # x2 = self.conv3(x2)
+        x2 = self.conv3(x2)
         x = torch.cat([x1, x2], dim=1)
         x = self.bn23(x)
         identity = self.identity(x)
