@@ -42,6 +42,7 @@ from backbone.conv_utils.dcn import DeformableConv2d
 from backbone.conv_utils.ghost_conv import GhostModule
 from backbone.attention_modules.eca import eca_block
 import backbone.vision.mobilevit_modules.mobilevit as mv
+import backbone.vision.ImageEncoder as IE
 import backbone.vision.poolformer_modules.poolformer as pf
 from nets.Achelous import Achelous3T
 from pruner.node import (
