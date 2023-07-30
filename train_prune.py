@@ -42,8 +42,19 @@ from backbone.conv_utils.dcn import DeformableConv2d
 from backbone.conv_utils.ghost_conv import GhostModule
 from backbone.attention_modules.eca import eca_block
 import backbone.vision.mobilevit_modules.mobilevit as mv
+import backbone.vision.poolformer_modules.poolformer as pf
 from nets.Achelous import Achelous3T
-from pruner.node import MVitNode, DCNNode, ShuffleAttnNode, GhostModuleNode, ecaNode
+from pruner.node import (
+    MVitNode,
+    DCNNode,
+    ShuffleAttnNode,
+    GhostModuleNode,
+    ecaNode,
+    Attn4DNode,
+    Attn4DDownNode,
+    # emLayerNormNode,
+    # emPosEncNode,
+)
 
 
 if __name__ == "__main__":
@@ -442,11 +453,29 @@ if __name__ == "__main__":
             torch.randn(1, 3, 320, 320),
         ]
         imt_dict = {
-            mv.Transformer: MVitNode,
-            DeformableConv2d: DCNNode,
-            sa.ShuffleAttention: ShuffleAttnNode,
             GhostModule: GhostModuleNode,
             eca_block: ecaNode,
+            DeformableConv2d: DCNNode,
+            sa.ShuffleAttention: ShuffleAttnNode,
+            # for mobilevit
+            mv.Transformer: MVitNode,
+            # for efficientformer
+            IE.Attention4D: Attn4DNode,
+            IE.Attention4DDownsample: Attn4DDownNode,
+            # # for edgenext
+            # em.layers.LayerNorm: emLayerNormNode,
+            # em.layers.PositionalEncodingFourier: emPosEncNode,
+        }
+        bmt_dict = {
+            IE.AttnFFN: [
+                ["token_mixer", 0, "layer_scale_1", 0],
+                ["mlp.norm2", 0, "layer_scale_2", 0],
+            ],
+            IE.FFN: [["mlp.norm2", 0, "layer_scale_2", 0]],
+            pf.PoolFormerBlock: [
+                ["norm1", 0, "layer_scale_1", 0],
+                ["norm2", 0, "layer_scale_2", 0],
+            ],
         }
         prune_model(
             model,
@@ -455,6 +484,7 @@ if __name__ == "__main__":
             args.pa,
             "cpu",
             imt_dict,
+            bmt_dict,
             ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
         )
         model.cuda(local_rank)

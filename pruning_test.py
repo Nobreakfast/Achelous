@@ -52,14 +52,14 @@ def __test_achelous():
     )
 
     test_epoch = 1
-    sparsity = 0.7
+    sparsity = 0.55
     # backbone = ["mv", "ef", "pf"]
     model = Achelous3T(
         resolution=320,
         num_det=7,
         num_seg=9,
         phi="S2",
-        backbone="ef",  # FIXME: en, ev, rv
+        backbone="pf",  # FIXME: en, ev, rv
         neck="gdf",
         spp=True,
         nano_head=False,
@@ -78,7 +78,7 @@ def __test_achelous():
         # em.layers.LayerNorm: emLayerNormNode,
         # em.layers.PositionalEncodingFourier: emPosEncNode,
     }
-    # TODO: pruning bundling
+    # DONE: pruning bundling
     bmt_dict = {
         IE.AttnFFN: [
             ["token_mixer", 0, "layer_scale_1", 0],
@@ -104,7 +104,7 @@ def __test_achelous():
         model,
         example_input,
         sparsity,
-        "random",
+        "erk",
         dev,
         imt_dict,
         bmt_dict,

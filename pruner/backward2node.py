@@ -60,7 +60,7 @@ IGNORE_BACKWARD_TYPE = (
     # "TBackward0",
     "NoneType",
 )
-DEBUG = True
+DEBUG = False
 
 """
 START
