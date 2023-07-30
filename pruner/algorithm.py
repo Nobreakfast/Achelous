@@ -55,6 +55,7 @@ def prune_model(
     algorithm="uniform",
     device="cpu",
     imt_dict={},
+    bmt_dict={},
     imk=[],
 ):
     device = torch.device(device)
@@ -63,7 +64,8 @@ def prune_model(
     __get_flops(model, example_input, device)
     print("=" * 20, "Original Model", "=" * 20)
 
-    node_dict, ignore_nodes = __backward2node(model, example_input, imt_dict)
+    node_dict, ignore_nodes = __backward2node(model, example_input, imt_dict, bmt_dict)
+
     imk.extend([n.name for n in ignore_nodes])
     groups = __get_groups(node_dict)
     prune_fn = globals()[algorithm]

@@ -192,14 +192,39 @@ def __init_dict_and_list(output):
     return node_dict, grad_list, total_sum
 
 
-def __backward2node(model, example_input, imt_dict):
-    # get module2key
+def __hasattr(module, attr):
+    attr_list = attr.split(".")
+    if len(attr_list) == 1:
+        return hasattr(module, attr)
+    else:
+        assert hasattr(module, attr_list[0]), f"{attr_list[0]} not in {module}"
+        return __hasattr(getattr(module, attr_list[0]), ".".join(attr_list[1:]))
+
+
+def __bmt2name(name, module, bundle_list):
+    bmk_dict = {}
+    for b in bundle_list:
+        b0_list = b[0].split(".")
+        assert __hasattr(module, b0_list[0]), f"{b[0]} not in {name}"
+        if hasattr(module, b[2]):
+            m = getattr(module, b[2])
+            bmk_dict[name + "." + b[0]] = [m, b[1], b[3]]
+        else:
+            continue
+    return bmk_dict
+
+
+def __backward2node(model, example_input, imt_dict, bmt_dict):
+    # get module2key and bmk
     module2key = {}
+    bmk_dict = {}
     for name, mod in model.named_modules():
         if isinstance(mod, tuple(imt_dict.keys())):
             module2key[mod] = name
         if not mod._modules:  # is a leaf module
             module2key[mod] = name
+        if isinstance(mod, tuple(bmt_dict.keys())):
+            bmk_dict.update(__bmt2name(name, mod, bmt_dict[type(mod)]))
 
     # register forward hook
     hooks = register_forward_hooks(model, imt_dict.keys())
@@ -371,6 +396,10 @@ def __backward2node(model, example_input, imt_dict):
                     ignore_nodes.append(sub_n)
                 else:
                     ignore_nodes.extend(sub_n.prev)
+
+    # update bmk_dict into nodes
+    for key in bmk_dict.keys():
+        node_dict[key].bundle = bmk_dict[key]
 
     print("=" * 10, "Insert Relation", "=" * 10) if DEBUG else None
     return node_dict, ignore_nodes

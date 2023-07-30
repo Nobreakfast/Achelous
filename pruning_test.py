@@ -37,6 +37,7 @@ def __test_achelous():
     import backbone.vision.mobilevit_modules.mobilevit as mv
     import backbone.vision.ImageEncoder as IE
     import backbone.vision.edgenext_modules as em
+    import backbone.vision.poolformer_modules.poolformer as pf
     from nets.Achelous import Achelous3T
     from pruner.node import (
         MVitNode,
@@ -58,7 +59,7 @@ def __test_achelous():
         num_det=7,
         num_seg=9,
         phi="S2",
-        backbone="mv",  # FIXME: en, ev, rv
+        backbone="ef",  # FIXME: en, ev, rv
         neck="gdf",
         spp=True,
         nano_head=False,
@@ -78,6 +79,17 @@ def __test_achelous():
         # em.layers.PositionalEncodingFourier: emPosEncNode,
     }
     # TODO: pruning bundling
+    bmt_dict = {
+        IE.AttnFFN: [
+            ["token_mixer", 0, "layer_scale_1", 0],
+            ["mlp.norm2", 0, "layer_scale_2", 0],
+        ],
+        IE.FFN: [["mlp.norm2", 0, "layer_scale_2", 0]],
+        pf.PoolFormerBlock: [
+            ["norm1", 0, "layer_scale_1", 0],
+            ["norm2", 0, "layer_scale_2", 0],
+        ],
+    }
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     device = torch.device(dev)
     model.to(device).eval()
@@ -95,7 +107,8 @@ def __test_achelous():
         "random",
         dev,
         imt_dict,
-        ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
+        bmt_dict,
+        ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],  # first group
     )
     model.to(device)
     example_input = [i.to(device) for i in example_input]
