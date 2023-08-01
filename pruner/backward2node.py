@@ -214,6 +214,15 @@ def __bmt2name(name, module, bundle_list):
     return bmk_dict
 
 
+def __skl2imk(skl, node_dict):
+    imk = []
+    for key in node_dict.keys():
+        for pattern in skl:
+            if pattern in key:
+                imk.append(key)
+    return imk
+
+
 def __backward2node(model, example_input, imt_dict, bmt_dict):
     # get module2key and bmk
     module2key = {}

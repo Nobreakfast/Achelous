@@ -52,15 +52,15 @@ def __test_achelous():
     )
 
     test_epoch = 1
-    sparsity = 0.55
+    sparsity = 0.43
     # backbone = ["mv", "ef", "pf"]
     model = Achelous3T(
         resolution=320,
         num_det=7,
         num_seg=9,
         phi="S2",
-        backbone="pf",  # FIXME: en, ev, rv
-        neck="gdf",
+        backbone="ef",  # FIXME: en, ev, rv
+        neck="cdf",
         spp=True,
         nano_head=False,
     )
@@ -90,6 +90,14 @@ def __test_achelous():
             ["norm2", 0, "layer_scale_2", 0],
         ],
     }
+    imk = [
+        "image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1",
+    ]
+    skl = [
+        # "lane_seg",
+        # "se_seg",
+        # "det_head",
+    ]
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     device = torch.device(dev)
     model.to(device).eval()
@@ -101,14 +109,7 @@ def __test_achelous():
     model.cpu()
     example_input = [i.cpu() for i in example_input]
     prune_model(
-        model,
-        example_input,
-        sparsity,
-        "erk",
-        dev,
-        imt_dict,
-        bmt_dict,
-        ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],  # first group
+        model, example_input, sparsity, "erk", dev, imt_dict, bmt_dict, imk, skl
     )
     model.to(device)
     example_input = [i.to(device) for i in example_input]
