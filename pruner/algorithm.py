@@ -6,7 +6,7 @@ from tqdm import trange
 from thop import profile, clever_format
 from torch import profiler
 
-from .backward2node import __backward2node, __get_groups
+from .backward2node import __backward2node, __get_groups, __skl2imk
 from .node import InOutNode, CustomNode, ConvNode, LinearNode
 
 
@@ -57,6 +57,7 @@ def prune_model(
     imt_dict={},
     bmt_dict={},
     imk=[],
+    skl=[],
 ):
     device = torch.device(device)
     model.eval()
@@ -67,6 +68,7 @@ def prune_model(
     node_dict, ignore_nodes = __backward2node(model, example_input, imt_dict, bmt_dict)
 
     imk.extend([n.name for n in ignore_nodes])
+    imk.extend(__skl2imk(skl, node_dict))
     groups = __get_groups(node_dict)
     prune_fn = globals()[algorithm]
     prune_fn(groups, sparsity, imk)
