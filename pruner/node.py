@@ -120,6 +120,8 @@ class BaseNode(abc.ABC):
         return self.in_ch, self.out_ch
 
     def prune(self, prune_idx, dim):
+        if self.name == "rc_blocks.4.radar_conv.deformable_conv":
+            print("hello")
         self.prune_idx[dim] = prune_idx
 
     def _get_saved_idx(self, length, prune_idx):

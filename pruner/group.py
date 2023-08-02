@@ -145,6 +145,9 @@ class CurrentGroup(BaseGroup):
                 split = node.split
                 break
         for node in self.nodes:
+            if isinstance(node, PoolNode):  # FIXME ugly, patches for RadarNet
+                if node.prune_idx[0] == []:
+                    return
             if hasattr(node, "cat_idx1"):
                 cat = node.cat_idx1
                 round_to *= cat
@@ -173,11 +176,8 @@ class CurrentGroup(BaseGroup):
         )
 
         for node in self.nodes:
-            # if (
-            #     node.name
-            #     == "image_radar_encoder.fpn.backbone.stages.1.2.norm.AddB0.AddB0.CatB0"
-            # ):
-            #     print("hello")
+            if node.name == "rc_blocks.3.weight_conv2":
+                print("hello")
             if node.prune_idx[1] != []:
                 prune_idx = node.prune_idx[1]
         super().prune(prune_idx, 1)
