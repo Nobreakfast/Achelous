@@ -58,7 +58,6 @@ from pruner.node import (
 
 from unip.utils.evaluation import cal_fps
 
-
 if __name__ == "__main__":
     # =========== 参数解析实例 =========== #
     parser = argparse.ArgumentParser()
@@ -165,6 +164,7 @@ if __name__ == "__main__":
         bmt_dict,
         ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
     )
+    flops, params = cal_flops_params(model, example_input)
 
     example_input = [
         torch.randn(1, 3, 320, 320).to(device),
@@ -173,4 +173,8 @@ if __name__ == "__main__":
     model.to(device)
     model.eval()
     with torch.no_grad():
-        cal_fps(model, example_input, device, 1000, 400)
+        fps = cal_fps(model, example_input, device, 1000, 400)
+    print(f"{backbone}-{neck}-{phi}-{args.pa}-{args.pm}, times, fps, flops, params")
+    print(
+        f"{backbone}-{neck}-{phi}-{args.pa}-{args.pm}, {1/fps}, {fps}, {flops}, {params}"
+    )
