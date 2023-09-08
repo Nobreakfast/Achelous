@@ -6,8 +6,19 @@ import math
 
 
 class SDTAEncoder(nn.Module):
-    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, expan_ratio=4,
-                 use_pos_emb=True, num_heads=8, qkv_bias=True, attn_drop=0., drop=0., scales=1):
+    def __init__(
+        self,
+        dim,
+        drop_path=0.0,
+        layer_scale_init_value=1e-6,
+        expan_ratio=4,
+        use_pos_emb=True,
+        num_heads=8,
+        qkv_bias=True,
+        attn_drop=0.0,
+        drop=0.0,
+        scales=1,
+    ):
         super().__init__()
         width = max(int(math.ceil(dim / scales)), int(math.floor(dim // scales)))
         self.width = width
@@ -17,29 +28,45 @@ class SDTAEncoder(nn.Module):
             self.nums = scales - 1
         convs = []
         for i in range(self.nums):
-            convs.append(nn.Conv2d(width, width, kernel_size=3, padding=1, groups=width))
+            convs.append(
+                nn.Conv2d(width, width, kernel_size=3, padding=1, groups=width)
+            )
         self.convs = nn.ModuleList(convs)
 
         self.pos_embd = None
         if use_pos_emb:
             self.pos_embd = PositionalEncodingFourier(dim=dim)
         self.norm_xca = LayerNorm(dim, eps=1e-6)
-        self.gamma_xca = nn.Parameter(layer_scale_init_value * torch.ones(dim),
-                                      requires_grad=True) if layer_scale_init_value > 0 else None
-        self.xca = XCA(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.gamma_xca = (
+            nn.Parameter(layer_scale_init_value * torch.ones(dim), requires_grad=True)
+            if layer_scale_init_value > 0
+            else None
+        )
+        self.xca = XCA(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
 
         self.norm = LayerNorm(dim, eps=1e-6)
-        self.pwconv1 = nn.Linear(dim, expan_ratio * dim)  # pointwise/1x1 convs, implemented with linear layers
+        self.pwconv1 = nn.Linear(
+            dim, expan_ratio * dim
+        )  # pointwise/1x1 convs, implemented with linear layers
         self.act = nn.GELU()  # TODO: MobileViT is using 'swish'
         self.pwconv2 = nn.Linear(expan_ratio * dim, dim)
-        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)),
-                                  requires_grad=True) if layer_scale_init_value > 0 else None
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.gamma = (
+            nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True)
+            if layer_scale_init_value > 0
+            else None
+        )
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
     def forward(self, x):
         input = x
-
-        spx = torch.split(x, self.width, 1)
+        spx = torch.chunk(x, self.nums + 1, 1)
+        # spx = torch.split(x, self.width, 1) # original
         for i in range(self.nums):
             if i == 0:
                 sp = spx[i]
@@ -55,7 +82,9 @@ class SDTAEncoder(nn.Module):
         B, C, H, W = x.shape
         x = x.reshape(B, C, H * W).permute(0, 2, 1)
         if self.pos_embd:
-            pos_encoding = self.pos_embd(B, H, W).reshape(B, -1, x.shape[1]).permute(0, 2, 1)
+            pos_encoding = (
+                self.pos_embd(B, H, W).reshape(B, -1, x.shape[1]).permute(0, 2, 1)
+            )
             x = x + pos_encoding
         x = x + self.drop_path(self.gamma_xca * self.xca(self.norm_xca(x)))
         x = x.reshape(B, H, W, C)
@@ -76,10 +105,22 @@ class SDTAEncoder(nn.Module):
 
 class SDTAEncoderBNHS(nn.Module):
     """
-        SDTA Encoder with Batch Norm and Hard-Swish Activation
+    SDTA Encoder with Batch Norm and Hard-Swish Activation
     """
-    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6, expan_ratio=4,
-                 use_pos_emb=True, num_heads=8, qkv_bias=True, attn_drop=0., drop=0., scales=1):
+
+    def __init__(
+        self,
+        dim,
+        drop_path=0.0,
+        layer_scale_init_value=1e-6,
+        expan_ratio=4,
+        use_pos_emb=True,
+        num_heads=8,
+        qkv_bias=True,
+        attn_drop=0.0,
+        drop=0.0,
+        scales=1,
+    ):
         super().__init__()
         width = max(int(math.ceil(dim / scales)), int(math.floor(dim // scales)))
         self.width = width
@@ -89,24 +130,40 @@ class SDTAEncoderBNHS(nn.Module):
             self.nums = scales - 1
         convs = []
         for i in range(self.nums):
-            convs.append(nn.Conv2d(width, width, kernel_size=3, padding=1, groups=width))
+            convs.append(
+                nn.Conv2d(width, width, kernel_size=3, padding=1, groups=width)
+            )
         self.convs = nn.ModuleList(convs)
 
         self.pos_embd = None
         if use_pos_emb:
             self.pos_embd = PositionalEncodingFourier(dim=dim)
         self.norm_xca = nn.BatchNorm2d(dim)
-        self.gamma_xca = nn.Parameter(layer_scale_init_value * torch.ones(dim),
-                                      requires_grad=True) if layer_scale_init_value > 0 else None
-        self.xca = XCA(dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.gamma_xca = (
+            nn.Parameter(layer_scale_init_value * torch.ones(dim), requires_grad=True)
+            if layer_scale_init_value > 0
+            else None
+        )
+        self.xca = XCA(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
 
         self.norm = nn.BatchNorm2d(dim)
-        self.pwconv1 = nn.Linear(dim, expan_ratio * dim)  # pointwise/1x1 convs, implemented with linear layers
+        self.pwconv1 = nn.Linear(
+            dim, expan_ratio * dim
+        )  # pointwise/1x1 convs, implemented with linear layers
         self.act = nn.Hardswish()  # TODO: MobileViT is using 'swish'
         self.pwconv2 = nn.Linear(expan_ratio * dim, dim)
-        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)),
-                                  requires_grad=True) if layer_scale_init_value > 0 else None
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.gamma = (
+            nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True)
+            if layer_scale_init_value > 0
+            else None
+        )
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
     def forward(self, x):
         input = x
@@ -128,7 +185,9 @@ class SDTAEncoderBNHS(nn.Module):
         B, C, H, W = x.shape
         x = x.reshape(B, C, H * W).permute(0, 2, 1)
         if self.pos_embd:
-            pos_encoding = self.pos_embd(B, H, W).reshape(B, -1, x.shape[1]).permute(0, 2, 1)
+            pos_encoding = (
+                self.pos_embd(B, H, W).reshape(B, -1, x.shape[1]).permute(0, 2, 1)
+            )
             x = x + pos_encoding
         x = x + self.drop_path(self.gamma_xca * self.xca(x))
         x = x.reshape(B, H, W, C).permute(0, 3, 1, 2)
@@ -149,7 +208,7 @@ class SDTAEncoderBNHS(nn.Module):
 
 
 class XCA(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0.0, proj_drop=0.0):
         super().__init__()
         self.num_heads = num_heads
         self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
@@ -163,7 +222,11 @@ class XCA(nn.Module):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        q, k, v = (
+            qkv[0],
+            qkv[1],
+            qkv[2],
+        )  # make torchscript happy (cannot use tensor as tuple)
 
         q = q.transpose(-2, -1)
         k = k.transpose(-2, -1)
@@ -186,4 +249,4 @@ class XCA(nn.Module):
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        return {'temperature'}
+        return {"temperature"}
