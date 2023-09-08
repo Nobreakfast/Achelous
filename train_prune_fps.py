@@ -56,7 +56,7 @@ from pruner.node import (
     # emPosEncNode,
 )
 
-from unip.utils.evaluation import cal_fps
+from unip.utils.evaluation import cal_fps, cal_flops
 
 if __name__ == "__main__":
     # =========== 参数解析实例 =========== #
