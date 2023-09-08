@@ -164,7 +164,7 @@ if __name__ == "__main__":
         bmt_dict,
         ["image_radar_encoder.radar_encoder.rc_blocks.0.weight_conv1"],
     )
-    flops, params = cal_flops_params(model, example_input)
+    flops, params = cal_flops(model, example_input)
 
     example_input = [
         torch.randn(1, 3, 320, 320).to(device),
