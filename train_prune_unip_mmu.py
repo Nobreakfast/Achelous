@@ -443,10 +443,12 @@ if __name__ == "__main__":
         pruner = BasePruner(
             model,
             example_input,
-            algorithm="UniformRatio",
+            algorithm="AdaptiveMMU",
             igtype2nodetype=igtype2nodetype,
             algo_args={
                 "score_fn": "weight_sum_l1_out",
+                "model": model,
+                "example_input": example_input,
             },
         )
         pruner.prune(args.pm)

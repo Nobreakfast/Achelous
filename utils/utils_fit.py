@@ -471,7 +471,7 @@ def fit_one_epoch(
                     }
                 )
             pbar.update(1)
-
+    min_loss = 20.0
     if local_rank == 0:
         pbar.close()
         print("Finish Validation")
@@ -572,15 +572,22 @@ def fit_one_epoch(
                         ),
                     ),
                 )
-
-            if len(loss_history.val_loss) <= 1 or (
-                val_total_loss / epoch_step_val
-            ) <= min(loss_history.val_loss) + min(loss_history_seg.val_loss):
+            if val_total_loss / epoch_step_val <= min_loss:
                 print("Save best model to best_epoch_weights.pth")
                 torch.save(
                     save_state_dict, os.path.join(save_dir, "best_epoch_weights.pth")
                 )
                 torch.save(model_train, os.path.join(save_dir, "best_epoch_weights.pt"))
+                min_loss = val_total_loss / epoch_step_val
+
+            # if len(loss_history.val_loss) <= 1 or (
+            #     val_total_loss / epoch_step_val
+            # ) <= min(loss_history.val_loss) + min(loss_history_seg.val_loss):
+            #     print("Save best model to best_epoch_weights.pth")
+            #     torch.save(
+            #         save_state_dict, os.path.join(save_dir, "best_epoch_weights.pth")
+            #     )
+            #     torch.save(model_train, os.path.join(save_dir, "best_epoch_weights.pt"))
 
         torch.save(save_state_dict, os.path.join(save_dir, "last_epoch_weights.pth"))
         torch.save(model_train, os.path.join(save_dir, "last_epoch_weights.pt"))
