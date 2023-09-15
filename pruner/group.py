@@ -74,6 +74,7 @@ class CurrentGroup(BaseGroup):
     def __get_next_group(self):
         next_group = []
         for node in self.nodes:
+            node.group = self
             next_group.extend(node.next)
         next_group = NextGroup(list(set(next_group)))
         self.next_group = next_group

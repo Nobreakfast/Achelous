@@ -14,7 +14,6 @@ from torch import profiler
 # from nets.Achelous import Achelous3T
 # import backbone.attention_modules.shuffle_attention as sa
 # import backbone.radar.RadarEncoder as re
-import torch_pruning as tp
 import tqdm
 
 CONV_TYPE = (
@@ -410,8 +409,24 @@ def __backward2node(model, example_input, imt_dict, bmt_dict):
     for key in bmk_dict.keys():
         node_dict[key].bundle = bmk_dict[key]
 
+    __update_modaility_task(node_dict)
+
     print("=" * 10, "Insert Relation", "=" * 10) if DEBUG else None
     return node_dict, ignore_nodes
+
+
+def __set_tag_tonext(node, tag):
+    if tag in node.tags:
+        return
+    node.tags.append(tag)
+    for n in node.next:
+        __set_tag_tonext(n, tag)
+
+
+def __update_modaility_task(node_dict):
+    input_node_key = [k for k in node_dict.keys() if k[:5] == "input"]
+    for key in input_node_key:
+        __set_tag_tonext(node_dict[key], key)
 
 
 def __get_all_next(node, cl=[]):

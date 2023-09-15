@@ -51,6 +51,8 @@ class BaseNode(abc.ABC):
         self.level = 0
         self.round_to = 1
         self.bundle = []
+        self.tags = []
+        self.group = None
 
     @abc.abstractmethod
     def _execute(self):
