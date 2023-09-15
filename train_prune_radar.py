@@ -451,7 +451,7 @@ if __name__ == "__main__":
         model.cpu()
         example_input = [
             # torch.randn(1, 3, 320, 320),
-            torch.randn(1, 3, 320, 320),
+            torch.randn(1, 3, 320, 320, requires_grad=True),
         ]
         imt_dict = {
             GhostModule: GhostModuleNode,
