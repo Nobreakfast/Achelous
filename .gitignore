@@ -3,7 +3,7 @@
 */.DS_Store
 logs*/
 plogs*/
-exp*
+#exp*
 .temp_miou_out/
 .temp_map_out/
 test/
