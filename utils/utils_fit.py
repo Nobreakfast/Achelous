@@ -578,7 +578,7 @@ def fit_one_epoch(
                     save_state_dict, os.path.join(save_dir, "best_epoch_weights.pth")
                 )
                 torch.save(model_train, os.path.join(save_dir, "best_epoch_weights.pt"))
-                min_loss = val_total_loss / epoch_step_val
+                min_loss = val_total_loss
 
             # if len(loss_history.val_loss) <= 1 or (
             #     val_total_loss / epoch_step_val
