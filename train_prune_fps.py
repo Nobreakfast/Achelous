@@ -178,3 +178,9 @@ if __name__ == "__main__":
     print(
         f"{backbone}-{neck}-{phi}-{args.pa}-{args.pm}, {1/fps}, {fps}, {flops}, {params}"
     )
+
+    import os
+
+    os.system(
+        f"echo '{backbone}-{neck}-{phi}-{args.pa}-{args.pm}, {1/fps}, {fps}, {flops}, {params}' >> fps.csv"
+    )

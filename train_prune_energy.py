@@ -177,7 +177,7 @@ if __name__ == "__main__":
 
     @calculator.measure(times=2000, warmup=1000)
     def inference(model, example_input):
-        model(example_input)
+        model(*example_input)
 
     model.to(device)
     model.eval()
