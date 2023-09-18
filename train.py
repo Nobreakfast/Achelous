@@ -56,13 +56,9 @@ if __name__ == "__main__":
     parser.add_argument("--nw", type=int, default=4)
     parser.add_argument("--dice", type=str, default="True")
     parser.add_argument("--focal", type=str, default="True")
-    parser.add_argument("--pc_model", type=str, default="pn")
-    parser.add_argument("--spp", type=str, default="True")
-    parser.add_argument(
-        "--data_root",
-        type=str,
-        default="E:/Big_Datasets/water_surface/benchmark_new/WaterScenes_new",
-    )
+    parser.add_argument("--pc_model", type=str, default='pn')
+    parser.add_argument("--spp", type=str, default='True')
+    parser.add_argument("--data_root", type=str, default='E:/Big_Datasets/water_surface/benchmark_new/WaterScenes_new')
 
     args = parser.parse_args()
 
@@ -569,20 +565,26 @@ if __name__ == "__main__":
         # ---------------------------------------#
         #   根据optimizer_type选择优化器
         # ---------------------------------------#
-        pg0, pg1, pg2 = [], [], []
-        for k, v in model.named_modules():
-            if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
-                pg2.append(v.bias)
-            if isinstance(v, nn.BatchNorm2d) or "bn" in k:
-                pg0.append(v.weight)
-            elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
-                pg1.append(v.weight)
-        optimizer = {
-            "adam": optim.Adam(pg0, Init_lr_fit, betas=(momentum, 0.999)),
-            "sgd": optim.SGD(pg0, Init_lr_fit, momentum=momentum, nesterov=True),
-        }[optimizer_type]
-        optimizer.add_param_group({"params": pg1, "weight_decay": weight_decay})
-        optimizer.add_param_group({"params": pg2})
+        if backbone != 'rv':
+            pg0, pg1, pg2 = [], [], []
+            for k, v in model.named_modules():
+                if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
+                    pg2.append(v.bias)
+                if isinstance(v, nn.BatchNorm2d) or "bn" in k:
+                    pg0.append(v.weight)
+                elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
+                    pg1.append(v.weight)
+            optimizer = {
+                'adam': optim.Adam(pg0, Init_lr_fit, betas=(momentum, 0.999)),
+                'sgd': optim.SGD(pg0, Init_lr_fit, momentum=momentum, nesterov=True)
+            }[optimizer_type]
+            optimizer.add_param_group({"params": pg1, "weight_decay": weight_decay})
+            optimizer.add_param_group({"params": pg2})
+        else:
+            if optimizer_type == 'sgd':
+                optimizer = optim.SGD(model.parameters(), weight_decay=weight_decay, lr=Init_lr_fit)
+            elif optimizer_type == 'adam':
+                optimizer = optim.AdamW(model.parameters(), weight_decay=weight_decay, lr=Init_lr_fit)
 
         # ---------------------------------------#
         #   获得学习率下降的公式
