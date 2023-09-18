@@ -31,6 +31,17 @@ def Achelous_energy(phi, backbone, neck):
         spp=True,
         nano_head=False,
     )
+    if neck == "rdf":
+        for child in model.children():
+            if isinstance(child, nn.Module):
+                print("deploy:", type(child).__name__)
+                child.deploy = True
+
+        for module in model.modules():
+            if hasattr(module, "reparameterize"):
+                print("reparameterize:", type(module).__name__)
+                module.reparameterize()
+
     flops, params = cal_flops(model, example_input, "cpu")
 
     # t, fps = inference(model, example_input)

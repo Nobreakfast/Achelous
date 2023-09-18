@@ -43,6 +43,18 @@ def Achelous_energy(phi, backbone, neck):
         spp=True,
         nano_head=False,
     )
+
+    if neck == "rdf":
+        for child in model.children():
+            if isinstance(child, nn.Module):
+                print("deploy:", type(child).__name__)
+                child.deploy = True
+
+        for module in model.modules():
+            if hasattr(module, "reparameterize"):
+                print("reparameterize:", type(module).__name__)
+                module.reparameterize()
+
     flops, params = cal_flops(model, example_input, "cpu")
     example_input[0] = example_input[0].to(device)
     example_input[1] = example_input[1].to(device)
