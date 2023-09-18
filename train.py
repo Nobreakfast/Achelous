@@ -51,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--epoch", type=int, default=100)
     parser.add_argument("--lr_init", type=float, default=0.03)
     parser.add_argument("--lr_decay", type=str, default="cos")
-    parser.add_argument("--opt", type=str, default="sgd")
+    parser.add_argument("--opt", type=str, default='sgd')
     parser.add_argument("--pc_num", type=int, default=512)
     parser.add_argument("--nw", type=int, default=4)
     parser.add_argument("--dice", type=str, default="True")
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     model_path = ""
 
     # ------------------------------------------------------#
-    #   backbone (4 options): ef (EfficientFormer), en (EdgeNeXt), ev (EdgeViT), mv (MobileViT), rv (RepViT), pf (PoolFormer)
+    #   backbone (4 options): ef (EfficientFormer), en (EdgeNeXt), ev (EdgeViT), mv (MobileViT), rv (RepViT), pf (PoolFormer), mo (MobileOne), fv (FastViT)
     # ------------------------------------------------------#
     backbone = args.backbone
 
