@@ -89,7 +89,7 @@ if __name__ == "__main__":
     parser.add_argument("--pm", default=0, type=float, help="pruning amount")
     parser.add_argument("--pa", default="uniform", type=str, help="pruning algroithm")
     parser.add_argument("--log_dir", default="plogs/01", type=str, help="log dir")
-    parser.add_argument("--image_id", type=str)
+    parser.add_argument("--image_id", default=None, type=str)
 
     args = parser.parse_args()
 
@@ -361,6 +361,17 @@ if __name__ == "__main__":
     # ------------------------------------------------------#
     #   加载模型
     # ------------------------------------------------------#
+
+    model = Achelous3T(
+        resolution=input_shape[0],
+        num_det=num_classes,
+        num_seg=num_classes_seg,
+        phi=phi,
+        backbone=backbone,
+        neck=neck,
+        spp=spp,
+        nano_head=lightweight,
+    ).cuda(local_rank)
     if args.pm > 0:
         model.cpu()
         example_input = [
@@ -726,7 +737,10 @@ if __name__ == "__main__":
         # ---------------------------------------#
         train_index = 0
         model_train_eval = model_train.eval()
-        eval_callback.predict(model_train_eval, args.image_id)
+        if args.image_id != None:
+            eval_callback.predict(model_train_eval, args.image_id)
+        else:
+            eval_callback.predict(model_train_eval)
         # eval_callback_seg.on_epoch_end(epoch + 1, model_train_eval)
         # eval_callback_seg_wl.on_epoch_end(epoch + 1, model_train_eval)
         # if is_radar_pc_seg:

@@ -340,7 +340,9 @@ class EvalCallback():
         # if outputs is not exist, create
         if not os.path.exists(os.path.join("outputs")):
             os.makedirs(os.path.join("outputs"))
-        plt.savefig(os.path.join("outputs/" + image_id + ".jpg"))
+        if not os.path.exists(os.path.join("outputs/pred")):
+            os.makedirs(os.path.join("outputs/pred"))
+        plt.savefig(os.path.join("outputs/pred/" + image_id + ".jpg"))
         plt.close()
         return
 
@@ -417,8 +419,8 @@ class EvalCallback():
             print("Get map done.")
             shutil.rmtree(self.map_out_path)
 
-    def predict(self, model, example_name):
-        self.net = model_eval
+    def predict(self, model, example_name=None):
+        self.net = model.eval()
         if not os.path.exists(self.map_out_path):
             os.makedirs(self.map_out_path)
         if not os.path.exists(os.path.join(self.map_out_path, "ground-truth")):
@@ -433,7 +435,7 @@ class EvalCallback():
             #   读取雷达特征map
             # ------------------------------#
             name = os.path.splitext(annotation_line.split('/')[-1].split(' ')[0])[0]
-            if name != example_name:
+            if example_name != None and name != example_name:
                 continue
 
             radar_path = os.path.join(self.radar_path, name + '.npz')
@@ -475,7 +477,9 @@ class EvalCallback():
                 # if outputs is not exist, create
                 if not os.path.exists(os.path.join("outputs")):
                     os.makedirs(os.path.join("outputs"))
-                plt.savefig(os.path.join("outputs/" + image_id + "_gt.jpg"))
+                if not os.path.exists(os.path.join("outputs/gt")):
+                    os.makedirs(os.path.join("outputs/gt"))
+                plt.savefig(os.path.join("outputs/gt/" + image_id + "_gt.jpg"))
                 plt.close()
             break
 
