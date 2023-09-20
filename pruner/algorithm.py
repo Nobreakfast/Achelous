@@ -179,6 +179,48 @@ def mmu(groups, sparsity, imk, model, example_input, node_dict):
             assert False, f"tags: {tags}"
 
 
+def mmu2(groups, sparsity, imk, model, example_input, node_dict):
+    tag2nodes = __get_tag2nodes(node_dict)
+    synflow_input = [
+        torch.ones_like(example_input[0]),
+        torch.ones_like(example_input[1]),
+    ]
+    out = model(*synflow_input)
+    out, _ = __sum_output(out, 0)
+    out.backward()
+
+    tag2score = {}
+    for tag, nodes in tag2nodes.items():
+        tmp_score = 0.0
+        count = 0
+        for node in nodes:
+            count += node.module.weight.numel()
+            tmp_score = (
+                tmp_score
+                + (
+                    node.module.weight.data.abs() * node.module.weight.grad.data.abs()
+                ).sum()
+            )
+        tag2score[tag] = tmp_score / count
+    min_value = min(tag2score.values())
+    for k, v in tag2score.items():
+        tag2score[k] = max(1 / (torch.log(v / min_value) + 1), 0.8)
+
+    for g in groups:
+        if g.haskey(imk):
+            continue
+        tags = set()
+        for n in g.nodes:
+            tags.update(n.tags)
+        tags = list(tags)
+        if len(tags) == 1:
+            g.sparsity = sparsity * tag2score[tags[0]]
+        elif len(tags) == 2:
+            g.sparsity = sparsity * (tag2score[tags[0]] + tag2score[tags[1]]) / 2
+        else:
+            assert False, f"tags: {tags}"
+
+
 def erk(groups, sparsity, imk, model=None, example_input=None, node_dict=None):
     """
     erk = 1 - (in_ch + out_ch + k_h + k_w) / (in_ch * out_ch * k_h * k_w) if convolution

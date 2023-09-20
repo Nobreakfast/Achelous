@@ -87,7 +87,7 @@ class LossHistory():
 class EvalCallback():
     def __init__(self, net, input_shape, num_classes, image_ids, dataset_path, log_dir, cuda, radar_path, jpg_path,
                  local_rank, radar_pc_seg_path, is_radar_pc_seg, radar_pc_seg_features, radar_pc_seg_label, radar_pc_num,
-                 miou_out_path=".temp_miou_out", eval_flag=True, period=1):
+                 miou_out_path=".temp_miou_segline_out", eval_flag=True, period=1):
         super(EvalCallback, self).__init__()
 
         self.net = net

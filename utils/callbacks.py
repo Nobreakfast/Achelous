@@ -219,6 +219,131 @@ class EvalCallback():
         f.close()
         return
 
+    def cal_plot(self, image_id, image, radar_data, class_names, map_out_path, local_rank):
+        f = open(os.path.join(map_out_path, "detection-results/" + image_id + ".txt"), "w")
+        image_shape = np.array(np.shape(image)[0:2])
+        # ---------------------------------------------------------#
+        #   在这里将图像转换成RGB图像，防止灰度图在预测时报错。
+        #   代码仅仅支持RGB图像的预测，所有其它类型的图像都会转化成RGB
+        # ---------------------------------------------------------#
+        image = cvtColor(image)
+        # ---------------------------------------------------------#
+        #   给图像增加灰条，实现不失真的resize
+        #   也可以直接resize进行识别
+        # ---------------------------------------------------------#
+        image_data = resize_image(image, (self.input_shape[1], self.input_shape[0]), self.letterbox_image)
+        # ---------------------------------------------------------#
+        #   添加上batch_size维度
+        # ---------------------------------------------------------#
+        image_data = np.expand_dims(np.transpose(preprocess_input(np.array(image_data, dtype='float32')), (2, 0, 1)), 0)
+
+        with torch.no_grad():
+            images = torch.from_numpy(image_data)
+            if self.cuda:
+                images = images.cuda(self.local_rank)
+                radar_data = radar_data.cuda(self.local_rank)
+            # ---------------------------------------------------------#
+            #   将图像输入网络当中进行预测！
+            # ---------------------------------------------------------#
+
+            # ----------------- 重参数化 -------------------- #
+            for child in self.net.children():
+                if isinstance(child, nn.Module):
+                    print('deploy:', type(child).__name__)
+                    child.deploy = True
+
+            for module in self.net.modules():
+                if hasattr(module, 'reparameterize'):
+                    print('reparameterize:', type(module).__name__)
+                    module.reparameterize()
+            # ----------------------------------------------- #
+
+            if self.is_radar_pc_seg:
+                # -------------------------------- 麻烦的点云读取 ---------------------------------- #
+                radar_pc_file = pd.read_csv(os.path.join(self.radar_pc_seg_path, image_id + '.csv'), index_col=0)
+                radar_pc_features = radar_pc_file[self.radar_pc_seg_features]
+                radar_pc_labels = radar_pc_file[self.radar_pc_seg_label]
+
+                radar_pc_features = np.asarray(radar_pc_features)
+                radar_pc_labels = np.asarray(radar_pc_labels)
+
+                radar_pc_indexes = np.random.choice(radar_pc_features.shape[0], self.radar_pc_num, replace=True)
+
+                align_radar_pc_features = radar_pc_features[radar_pc_indexes]
+                align_radar_pc_labels = radar_pc_labels[radar_pc_indexes]
+                align_radar_pc_features = normalize(X=align_radar_pc_features, axis=0)
+                align_radar_pc_labels = align_radar_pc_labels
+
+                align_radar_pc_features = torch.from_numpy(np.array(align_radar_pc_features, dtype=np.float32)).type(
+                    torch.FloatTensor).unsqueeze(0).permute(0, 2, 1).cuda(self.local_rank)
+                align_radar_pc_labels = torch.from_numpy(np.array(align_radar_pc_labels, dtype=np.int32)).\
+                    type(torch.LongTensor).cuda(self.local_rank)
+                # --------------------------------------------------------------------------------- #
+
+                outputs = self.net(images, radar_data, align_radar_pc_features)[0]
+            else:
+                outputs = self.net(images, radar_data)[0]
+            outputs = decode_outputs(outputs, self.input_shape, local_rank)
+            # ---------------------------------------------------------#
+            #   将预测框进行堆叠，然后进行非极大抑制
+            # ---------------------------------------------------------#
+            results = non_max_suppression(outputs, self.num_classes, self.input_shape,
+                                          image_shape, self.letterbox_image, conf_thres=self.confidence,
+                                          nms_thres=self.nms_iou)
+
+            if results[0] is None:
+                return
+
+            top_label = np.array(results[0][:, 6], dtype='int32')
+            top_conf = results[0][:, 4] * results[0][:, 5]
+            top_boxes = results[0][:, :4]
+
+        top_100 = np.argsort(top_conf)[::-1][:self.max_boxes]
+        top_boxes = top_boxes[top_100]
+        top_conf = top_conf[top_100]
+        top_label = top_label[top_100]
+
+        for i, c in list(enumerate(top_label)):
+            predicted_class = self.class_names[int(c)]
+            box = top_boxes[i]
+            score = str(top_conf[i])
+
+            top, left, bottom, right = box
+            if predicted_class not in class_names:
+                continue
+
+            f.write("%s %s %s %s %s %s\n" % (
+            predicted_class, score[:6], str(int(left)), str(int(top)), str(int(right)), str(int(bottom))))
+
+        f.close()
+
+        # plot predicted image
+        plt.figure()
+        plt.imshow(image)
+        # add bbox and label to image
+        for i, c in list(enumerate(top_label)):
+            predicted_class = self.class_names[int(c)]
+            box = top_boxes[i]
+            score = str(top_conf[i])
+
+            top, left, bottom, right = box
+            if predicted_class not in class_names:
+                continue
+
+            plt.text(left, top, predicted_class + " " + score[:6], color="red")
+            plt.plot(
+                [left, right, right, left, left],
+                [top, top, bottom, bottom, top],
+                color="red",
+            )
+        # save image
+        # if outputs is not exist, create
+        if not os.path.exists(os.path.join("outputs")):
+            os.makedirs(os.path.join("outputs"))
+        plt.savefig(os.path.join("outputs/" + image_id + ".jpg"))
+        plt.close()
+        return
+
     def on_epoch_end(self, epoch, model_eval):
         if epoch % self.period == 0 and self.eval_flag:
             self.net = model_eval
@@ -291,3 +416,73 @@ class EvalCallback():
 
             print("Get map done.")
             shutil.rmtree(self.map_out_path)
+
+    def predict(self, model, example_name):
+        self.net = model_eval
+        if not os.path.exists(self.map_out_path):
+            os.makedirs(self.map_out_path)
+        if not os.path.exists(os.path.join(self.map_out_path, "ground-truth")):
+            os.makedirs(os.path.join(self.map_out_path, "ground-truth"))
+        if not os.path.exists(os.path.join(self.map_out_path, "detection-results")):
+            os.makedirs(os.path.join(self.map_out_path, "detection-results"))
+        print("Get map.")
+        for annotation_line in tqdm(self.val_lines):
+            line = annotation_line.split()
+
+            # ------------------------------#
+            #   读取雷达特征map
+            # ------------------------------#
+            name = os.path.splitext(annotation_line.split('/')[-1].split(' ')[0])[0]
+            if name != example_name:
+                continue
+
+            radar_path = os.path.join(self.radar_path, name + '.npz')
+            radar_data = np.load(radar_path)['arr_0']
+            radar_data = torch.from_numpy(radar_data).type(torch.cuda.FloatTensor).unsqueeze(0)
+
+            image_id = name
+            # ------------------------------#
+            #   读取图像并转换成RGB图像
+            # ------------------------------#
+            image = Image.open(line[0])
+            # ------------------------------#
+            #   获得预测框
+            # ------------------------------#
+            gt_boxes = np.array([np.array(list(map(int, box.split(',')))) for box in line[1:]])
+            # ------------------------------#
+            #   获得预测txt
+            # ------------------------------#
+            self.cal_plot(image_id, image, radar_data, self.class_names, self.map_out_path, self.local_rank)
+
+            # ------------------------------#
+            #   获得真实框txt
+            # ------------------------------#
+            with open(os.path.join(self.map_out_path, "ground-truth/" + image_id + ".txt"), "w") as new_f:
+                plt.figure()
+                plt.imshow(image)
+                for box in gt_boxes:
+                    left, top, right, bottom, obj = box
+                    obj_name = self.class_names[obj]
+                    new_f.write("%s %s %s %s %s\n" % (obj_name, left, top, right, bottom))
+                    plt.text(left, top, obj_name, color="red")
+                    plt.plot(
+                        [left, right, right, left, left],
+                        [top, top, bottom, bottom, top],
+                        color="red",
+                    )
+                
+                # save image
+                # if outputs is not exist, create
+                if not os.path.exists(os.path.join("outputs")):
+                    os.makedirs(os.path.join("outputs"))
+                plt.savefig(os.path.join("outputs/" + image_id + "_gt.jpg"))
+                plt.close()
+            break
+
+        # print("Calculate Map.")
+        # try:
+        #     temp_map = get_coco_map(class_names=self.class_names, path=self.map_out_path)[1]
+        # except:
+        #     temp_map = get_map(self.MINOVERLAP, False, path=self.map_out_path)
+        # self.maps.append(temp_map)
+        # self.epoches.append(epoch)
