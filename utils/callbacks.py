@@ -16,6 +16,8 @@ from tqdm import tqdm
 from .utils import cvtColor, preprocess_input, resize_image
 from .utils_bbox import decode_outputs, non_max_suppression
 from .utils_map import get_coco_map, get_map
+import time
+t = str(time.time())
 
 
 class LossHistory():
@@ -249,12 +251,12 @@ class EvalCallback():
             # ----------------- 重参数化 -------------------- #
             for child in self.net.children():
                 if isinstance(child, nn.Module):
-                    print('deploy:', type(child).__name__)
+                    # print('deploy:', type(child).__name__)
                     child.deploy = True
 
             for module in self.net.modules():
                 if hasattr(module, 'reparameterize'):
-                    print('reparameterize:', type(module).__name__)
+                    # print('reparameterize:', type(module).__name__)
                     module.reparameterize()
             # ----------------------------------------------- #
 
@@ -338,11 +340,11 @@ class EvalCallback():
             )
         # save image
         # if outputs is not exist, create
-        if not os.path.exists(os.path.join("outputs")):
-            os.makedirs(os.path.join("outputs"))
-        if not os.path.exists(os.path.join("outputs/pred")):
-            os.makedirs(os.path.join("outputs/pred"))
-        plt.savefig(os.path.join("outputs/pred/" + image_id + ".jpg"))
+        if not os.path.exists(os.path.join("outputs_"+t)):
+            os.makedirs(os.path.join("outputs_"+t))
+        if not os.path.exists(os.path.join("outputs_"+t, "/pred")):
+            os.makedirs(os.path.join("outputs_"+t, "/pred"))
+        plt.savefig(os.path.join("outputs_"+t, "/pred/" + image_id + ".jpg"))
         plt.close()
         return
 
@@ -475,13 +477,12 @@ class EvalCallback():
                 
                 # save image
                 # if outputs is not exist, create
-                if not os.path.exists(os.path.join("outputs")):
-                    os.makedirs(os.path.join("outputs"))
-                if not os.path.exists(os.path.join("outputs/gt")):
-                    os.makedirs(os.path.join("outputs/gt"))
-                plt.savefig(os.path.join("outputs/gt/" + image_id + "_gt.jpg"))
+                if not os.path.exists(os.path.join("outputs_"+t)):
+                    os.makedirs(os.path.join("outputs_"+t))
+                if not os.path.exists(os.path.join("outputs_"+t, "/gt")):
+                    os.makedirs(os.path.join("outputs+_"+t, "/gt"))
+                plt.savefig(os.path.join("outputs_"+t, "/gt/" + image_id + ".jpg"))
                 plt.close()
-            break
 
         # print("Calculate Map.")
         # try:
