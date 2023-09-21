@@ -18,7 +18,9 @@ from .utils_bbox import decode_outputs, non_max_suppression
 from .utils_map import get_coco_map, get_map
 import time
 t = str(time.time())
-
+os.makedirs(os.path.join("outputs_"+t))
+os.makedirs(os.path.join("outputs_"+t, "/pred"))
+os.makedirs(os.path.join("outputs_"+t, "/gt"))
 
 class LossHistory():
     def __init__(self, log_dir, model, input_shape):
@@ -339,11 +341,6 @@ class EvalCallback():
                 color="red",
             )
         # save image
-        # if outputs is not exist, create
-        if not os.path.exists(os.path.join("outputs_"+t)):
-            os.makedirs(os.path.join("outputs_"+t))
-        if not os.path.exists(os.path.join("outputs_"+t, "/pred")):
-            os.makedirs(os.path.join("outputs_"+t, "/pred"))
         plt.savefig(os.path.join("outputs_"+t, "/pred/" + image_id + ".jpg"))
         plt.close()
         return
@@ -476,11 +473,6 @@ class EvalCallback():
                     )
                 
                 # save image
-                # if outputs is not exist, create
-                if not os.path.exists(os.path.join("outputs_"+t)):
-                    os.makedirs(os.path.join("outputs_"+t))
-                if not os.path.exists(os.path.join("outputs_"+t, "/gt")):
-                    os.makedirs(os.path.join("outputs+_"+t, "/gt"))
                 plt.savefig(os.path.join("outputs_"+t, "/gt/" + image_id + ".jpg"))
                 plt.close()
 

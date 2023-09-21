@@ -520,7 +520,8 @@ if __name__ == "__main__":
     with open(val_annotation_path, encoding="utf-8") as f:
         val_lines = f.readlines()
     # combine train_lines and val_lines
-    val_lines = train_lines + val_lines
+    if args.image_id is not None:
+        val_lines = train_lines + val_lines
     num_train = len(train_lines)
     num_val = len(val_lines)
 
