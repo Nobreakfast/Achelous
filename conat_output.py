@@ -1,12 +1,26 @@
 import cv2
 import os
+import argparse
+
+parser = argparse.ArgumentParser(
+    description="Concatenate the images in the 'pred' and 'gt' folders and create a video."
+)
+parser.add_argument(
+    "-f",
+    "--folder",
+    type=str,
+    default="output",
+    help="Path to the folder containing the predicted images.",
+)
+args = parser.parse_args()
+source_folder = args.folder
 
 # Input folders containing images
-pred_folder = "pred"
-gt_folder = "gt"
+pred_folder = source_folder + "pred"
+gt_folder = source_folder + "gt"
 
 # Output video file name
-output_video = "output_video.mp4"
+output_video = source_folder + "output_video.mp4"
 
 # Get the list of image files in the folders
 pred_images = [
@@ -25,7 +39,7 @@ image = cv2.imread(pred_images[0])
 height, width, layers = image.shape
 
 # Define the codec and create a VideoWriter object
-fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # You can change the codec as needed
+fourcc = cv2.VideoWriter_fourcc(*"mp4")  # You can change the codec as needed
 video_writer = cv2.VideoWriter(output_video, fourcc, 30.0, (width, height))
 
 # Iterate through the images and create the video
