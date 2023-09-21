@@ -45,6 +45,19 @@ video_writer = cv2.VideoWriter(output_video, fourcc, fps, (width * 2, height))
 for pred_image_name, gt_image_name in zip(pred_images, gt_images):
     pred_image = cv2.imread(os.path.join(pred_folder, pred_image_name))
     gt_image = cv2.imread(os.path.join(gt_folder, gt_image_name))
+    # draw filename for pred_image and gt_image
+    cv2.putText(
+        pred_image,
+        pred_image_name,
+        (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0, 0, 255),
+        2,
+    )
+    cv2.putText(
+        gt_image, gt_image_name, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2
+    )
 
     # Concatenate the images horizontally
     concatenated_image = cv2.hconcat([pred_image, gt_image])
