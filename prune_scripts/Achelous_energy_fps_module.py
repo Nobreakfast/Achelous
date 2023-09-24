@@ -13,14 +13,28 @@ from unip.utils.evaluation import cal_flops
 from nets.Achelous import *
 
 
-calculator = Calculator(cpu=True, device_id=0)
+device_dict = {}
+
+try:
+    import pynvml
+
+    device_dict.update({"NvidiaGPU": {"device_id": 0}})
+except:
+    print("pynvml not found")
+
+try:
+    from jtop import jtop
+
+    device_dict.update({"JetsonDev": {}})
+except:
+    print("jetson_stats not found")
+
+calculator = Calculator(device_dict)
 
 
 phi_list = ["S0", "S1", "S2"]
-backbone_list = ["mo", "fv"]
-neck_list = ["rdf"]
-# backbone_list = ["mv", "ef", "en", "ev", "rv", "pf"]
-# neck_list = ["gdf", "cdf"]
+backbone_list = [["mv", "ef", "en", "ev", "rv", "pf"], ["mo", "fv"]]
+neck_list = [["gdf", "cdf"], ["rdf"]]
 
 
 @calculator.measure(times=2000, warmup=1000)
@@ -79,28 +93,29 @@ def Achelous_energy(phi, backbone, neck):
             m(example_input)
         except:
             continue
-        flops, params = cal_flops(m, example_input, "cpu")
+        MACs, params = cal_flops(m, example_input, "cpu")
         example_input = example_input.to(device)
         m.to(device)
         m.eval()
         inference(m, example_input)
-        p, e, pg, eg, pc, ec = calculator.summary(verbose=False)
-        results.append([k, p, pg, pc, e, eg, ec, flops, params])
+        res = calculator.summary(verbose=False)
+        results.append([res[0], res[1], res[4], MACs, params])
     results = np.array(results)
     np.savetxt(
-        f"/home/allen/Downloads/AE/{backbone}-{neck}-{phi}.csv",
+        f"energy_output/modules/{backbone}-{neck}-{phi}.csv",
         results,
         fmt="%s",
         delimiter=",",
-        header="module,power(mW),gpu_power(mW),cpu_power(mW),energy(J),gpu_energy(J),cpu_energy(J),flops,params",
+        header="module,power(W),energy(J),MACs,flops,params",
     )
-    # return p, e, pg, eg, pc, ec, flops, params
 
 
 if __name__ == "__main__":
     print("=" * 20, "test_BasePruner_with_Achelous", "=" * 20)
-    # results = []
+    # make dir energy_output
+    os.mkdir("energy_output/modules")
     for phi in phi_list:
-        for backbone in backbone_list:
-            for neck in neck_list:
-                Achelous_energy(phi, backbone, neck)
+        for i in range(2):
+            for backbone in backbone_list[i]:
+                for neck in neck_list[i]:
+                    Achelous_energy(phi, backbone, neck)

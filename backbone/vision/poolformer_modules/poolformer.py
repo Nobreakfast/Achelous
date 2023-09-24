@@ -22,7 +22,7 @@ import torch.nn as nn
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.layers import DropPath, trunc_normal_
 from timm.models.registry import register_model
-from timm.models.layers.helpers import to_2tuple
+from timm.layers.helpers import to_2tuple
 
 try:
     from mmseg.models.builder import BACKBONES as seg_BACKBONES

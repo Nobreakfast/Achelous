@@ -12,15 +12,28 @@ from unip.utils.energy import Calculator
 from unip.utils.evaluation import cal_flops
 from nets.Achelous import *
 
+device_dict = {}
 
-calculator = Calculator(cpu=True, device_id=0)
+try:
+    import pynvml
+
+    device_dict.update({"NvidiaGPU": {"device_id": 0}})
+except:
+    print("pynvml not found")
+
+try:
+    from jtop import jtop
+
+    device_dict.update({"JetsonDev": {}})
+except:
+    print("jetson_stats not found")
+
+calculator = Calculator(device_dict)
 
 
 phi_list = ["S0", "S1", "S2"]
-backbone_list = ["mo", "fv"]
-neck_list = ["rdf"]
-# backbone_list = ["mv", "ef", "en", "ev", "rv", "pf"]
-# neck_list = ["gdf", "cdf"]
+backbone_list = [["mv", "ef", "en", "ev", "rv", "pf"], ["mo", "fv"]]
+neck_list = [["gdf", "cdf"], ["rdf"]]
 
 
 @calculator.measure(times=2000, warmup=1000)
@@ -55,52 +68,57 @@ def Achelous_energy(phi, backbone, neck):
                 print("reparameterize:", type(module).__name__)
                 module.reparameterize()
 
-    flops, params = cal_flops(model, example_input, "cpu")
+    MACs, params = cal_flops(model, example_input, "cpu")
     example_input[0] = example_input[0].to(device)
     example_input[1] = example_input[1].to(device)
     model.to(device)
     model.eval()
 
     inference(model, example_input)
-    p, e, pg, eg, pc, ec = calculator.summary(verbose=False)
-    return p, e, pg, eg, pc, ec, flops, params
+    res = calculator.summary(verbose=False)
+    return (
+        res[0],
+        res[1],
+        res[4],
+        MACs,
+        params,
+    )  # power (W), energy (J), FPS, MACs, params
 
 
 if __name__ == "__main__":
     print("=" * 20, "test_BasePruner_with_Achelous", "=" * 20)
     results = []
     for phi in phi_list:
-        for backbone in backbone_list:
-            for neck in neck_list:
-                (
-                    power,
-                    energy,
-                    gpu_power,
-                    gpu_energy,
-                    cpu_power,
-                    cpu_energy,
-                    flops,
-                    params,
-                ) = Achelous_energy(phi, backbone, neck)
-                results.append(
-                    [
-                        backbone + "-" + neck + "-" + phi,
+        for i in range(2):
+            for backbone in backbone_list[i]:
+                for neck in neck_list[i]:
+                    (
                         power,
-                        gpu_power,
-                        cpu_power,
                         energy,
-                        gpu_energy,
-                        cpu_energy,
-                        flops,
+                        FPS,
+                        MACs,
                         params,
-                    ]
-                )
+                    ) = Achelous_energy(phi, backbone, neck)
+                    results.append(
+                        [
+                            backbone,
+                            neck,
+                            phi,
+                            power,
+                            energy,
+                            FPS,
+                            MACs,
+                            params,
+                        ]
+                    )
     # save results to csv
     results = np.array(results)
+    # make dir energy_output
+    os.mkdir("energy_output")
     np.savetxt(
-        "/home/allen/Downloads/Achelous_energy.csv",
+        "energy_output/Achelous_energy.csv",
         results,
         fmt="%s",
         delimiter=",",
-        header="backbone-neck-phi,power(mW),gpu_power(mW),cpu_power(mW),energy(J),gpu_energy(J),cpu_energy(J),flops,params",
+        header="backbone,neck,phi,power(W),energy(J),FPS,MACs,params",
     )
