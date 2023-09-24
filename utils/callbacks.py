@@ -18,9 +18,6 @@ from .utils_bbox import decode_outputs, non_max_suppression
 from .utils_map import get_coco_map, get_map
 import time
 t = str(time.time())
-os.makedirs(os.path.join("outputs_"+t))
-os.makedirs(os.path.join("outputs_"+t+"/pred"))
-os.makedirs(os.path.join("outputs_"+t+"/gt"))
 
 class LossHistory():
     def __init__(self, log_dir, model, input_shape):
@@ -224,6 +221,8 @@ class EvalCallback():
         return
 
     def cal_plot(self, image_id, image, radar_data, class_names, map_out_path, local_rank):
+        os.makedirs(os.path.join("outputs_"+t))
+        os.makedirs(os.path.join("outputs_"+t+"/pred"))
         f = open(os.path.join(map_out_path, "detection-results/" + image_id + ".txt"), "w")
         image_shape = np.array(np.shape(image)[0:2])
         # ---------------------------------------------------------#
@@ -419,6 +418,8 @@ class EvalCallback():
             shutil.rmtree(self.map_out_path)
 
     def predict(self, model, example_name=None):
+        os.makedirs(os.path.join("outputs_"+t))
+        os.makedirs(os.path.join("outputs_"+t+"/gt"))
         self.net = model.eval()
         if not os.path.exists(self.map_out_path):
             os.makedirs(self.map_out_path)
