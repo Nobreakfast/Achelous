@@ -78,12 +78,12 @@ calculator = Calculator(device_dict)
 
 
 prune_list = [
-    ["mv", "gdf", "S2", "uniform", "0.35"],
-    ["ef", "gdf", "S2", "uniform", "0.36"],
-    ["pf", "gdf", "S2", "uniform", "0.45"],
-    ["mv", "gdf", "S2", "mmu", "0.35"],
-    ["ef", "gdf", "S2", "mmu", "0.36"],
-    ["pf", "gdf", "S2", "mmu", "0.55"],
+    ["mv", "gdf", "S2", 0.35, "uniform"],
+    ["ef", "gdf", "S2", 0.36, "uniform"],
+    ["pf", "gdf", "S2", 0.45, "uniform"],
+    ["mv", "gdf", "S2", 0.35, "mmu"],
+    ["ef", "gdf", "S2", 0.36, "mmu"],
+    ["pf", "gdf", "S2", 0.55, "mmu"],
 ]
 
 
