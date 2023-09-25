@@ -1,3 +1,4 @@
+import os
 import platform
 
 if platform.system() != "Linux":
