@@ -425,7 +425,7 @@ def __test_achelous_mmu():
     )
 
     test_epoch = 1
-    sparsity = 0.5
+    sparsity = 0.36
     # backbone = ["mv", "ef", "pf"]
     model = Achelous3T(
         resolution=320,

@@ -137,12 +137,26 @@ def __get_tag2nodes(node_dict):
     return tag2nodes
 
 
+def linearlize(model):
+    signs = {}
+    for name, param in model.state_dict().items():
+        signs[name] = torch.sign(param)
+        param.abs_()
+    return signs
+
+
+def nonlinearlize(model, signs):
+    for name, param in model.state_dict().items():
+        param.mul_(signs[name])
+
+
 def mmu(groups, sparsity, imk, model, example_input, node_dict):
     tag2nodes = __get_tag2nodes(node_dict)
     synflow_input = [
         torch.ones_like(example_input[0]),
         torch.ones_like(example_input[1]),
     ]
+    # signs = linearlize(model)
     out = model(*synflow_input)
     out, _ = __sum_output(out, 0)
     out.backward()
@@ -160,9 +174,10 @@ def mmu(groups, sparsity, imk, model, example_input, node_dict):
                 ).sum()
             )
         tag2score[tag] = tmp_score / count
-    min_value = min(tag2score.values())
+    rho_bar = torch.tensor(list(tag2score.values())).mean()
     for k, v in tag2score.items():
-        tag2score[k] = max(1 / (torch.log(v / min_value) + 1), 0.8)
+        tag2score[k] = torch.log(v / rho_bar)
+        print(k, rho_bar, v, tag2score[k])
 
     for g in groups:
         if g.haskey(imk):
@@ -172,9 +187,12 @@ def mmu(groups, sparsity, imk, model, example_input, node_dict):
             tags.update(n.tags)
         tags = list(tags)
         if len(tags) == 1:
-            g.sparsity = sparsity * tag2score[tags[0]]
+            g.sparsity = sparsity + 0.1 * (1 - sparsity) * tag2score[tags[0]]
         elif len(tags) == 2:
-            g.sparsity = sparsity * (tag2score[tags[0]] + tag2score[tags[1]]) / 2
+            g.sparsity = (
+                sparsity
+                + 0.1 * (1 - sparsity) * (tag2score[tags[0]] + tag2score[tags[1]]) / 2
+            )
         else:
             assert False, f"tags: {tags}"
 

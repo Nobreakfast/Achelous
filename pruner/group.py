@@ -153,7 +153,6 @@ class CurrentGroup(BaseGroup):
                 cat = node.cat_idx1
                 round_to *= cat
                 break
-
         prune_num = (
             int(math.floor(self.channel * prune_ratio / round_to) * round_to)
             // split
