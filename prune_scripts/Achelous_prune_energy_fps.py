@@ -63,7 +63,7 @@ device_dict = {}
 try:
     import pynvml
 
-    device_dict.update({"NvidiaGPU": {"device_id": 0}})
+    device_dict.update({"NvidiaDev": {"device_id": 0}})
 except:
     print("pynvml not found")
 
@@ -194,7 +194,7 @@ if __name__ == "__main__":
                 params,
             ]
         )
-    os.mkdir("energy_output")
+    os.system("mkdir -p energy_output")
     np.savetxt(
         "energy_output/Achelous_prune_energy.csv",
         results,

@@ -1,3 +1,4 @@
+import os
 import platform
 
 if platform.system() != "Linux":
@@ -18,7 +19,7 @@ device_dict = {}
 try:
     import pynvml
 
-    device_dict.update({"NvidiaGPU": {"device_id": 0}})
+    device_dict.update({"NvidiaDev": {"device_id": 0}})
 except:
     print("pynvml not found")
 
@@ -113,7 +114,7 @@ def Achelous_energy(phi, backbone, neck):
 if __name__ == "__main__":
     print("=" * 20, "test_BasePruner_with_Achelous", "=" * 20)
     # make dir energy_output
-    os.mkdir("energy_output/modules")
+    os.system("mkdir -p energy_output/modules")
     for phi in phi_list:
         for i in range(2):
             for backbone in backbone_list[i]:
