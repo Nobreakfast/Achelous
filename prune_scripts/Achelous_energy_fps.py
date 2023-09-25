@@ -79,7 +79,7 @@ def Achelous_energy(phi, backbone, neck):
     res = calculator.summary(verbose=False)
     return (
         res[0],
-        res[1],
+        res[1] / 1e3,
         res[4],
         MACs,
         params,
