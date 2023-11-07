@@ -100,7 +100,7 @@ def Achelous_energy(phi, backbone, neck):
         m.eval()
         inference(m, example_input)
         res = calculator.summary(verbose=False)
-        results.append([res[0], res[1] / 1e3, res[4], MACs, params])
+        results.append([res[0], res[1] / 2e3, res[4], MACs, params])
     results = np.array(results)
     np.savetxt(
         f"energy_output/modules/{backbone}-{neck}-{phi}.csv",

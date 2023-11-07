@@ -157,7 +157,7 @@ def Achelous_prune_energy(backbone, neck, phi, pm, pa):
     res = calculator.summary(verbose=False)
     return (
         res[0],
-        res[1] / 1e3,
+        res[1] / 2e3,
         res[4],
         MACs,
         params,
