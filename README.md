@@ -186,7 +186,15 @@ mIoU-pc: mIoU of point clouds
 2. See annotations in predict.py and run (including prediction, export, heatmap visualization and export onnx)
 ---
 
-
+### Energy Evaluation
+1. Install ***UniP***:
+``` bash
+pip install git+https://github.com/Nobreakfast/UniP@dev
+```
+2. Run the scripts ***Achelous_energy_fps.sh***:
+``` bash
+sh Achelous_energy_fps.sh
+```
 
 ## Acknowledgement
 https://github.com/bubbliiiing

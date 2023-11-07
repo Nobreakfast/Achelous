@@ -165,7 +165,6 @@ def Achelous_prune_energy(backbone, neck, phi, pm, pa):
 
 
 if __name__ == "__main__":
-    print("=" * 20, "test_BasePruner_with_Achelous", "=" * 20)
     results = []
     for backbone, neck, phi, pm, pa in prune_list:
         (

@@ -1,6 +1,6 @@
 export PYTHONPATH=$PYTHONPATH:$PWD
 # normal 
-python prune_scripts/Achelous_energy_fps.py
+# python prune_scripts/Achelous_energy_fps.py
 # normal modules
 python prune_scripts/Achelous_energy_fps_module.py
 # prune

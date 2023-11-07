@@ -112,7 +112,6 @@ def Achelous_energy(phi, backbone, neck):
 
 
 if __name__ == "__main__":
-    print("=" * 20, "test_BasePruner_with_Achelous", "=" * 20)
     # make dir energy_output
     os.system("mkdir -p energy_output/modules")
     for phi in phi_list:

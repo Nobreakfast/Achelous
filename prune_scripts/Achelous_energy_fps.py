@@ -87,7 +87,6 @@ def Achelous_energy(phi, backbone, neck):
 
 
 if __name__ == "__main__":
-    print("=" * 20, "test_BasePruner_with_Achelous", "=" * 20)
     results = []
     for phi in phi_list:
         for i in range(2):
