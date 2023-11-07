@@ -1,4 +1,41 @@
-﻿# Achelous
+﻿# Pruning and Energy Evaluation of Achelous++
+
+## Pruning 
+1. Install ***UniP***:
+
+``` bash
+pip install git+https://github.com/Nobreakfast/UniP@dev
+```
+
+2. Pruning
+
+``` bash
+export PYTHONPATH=$PYTHONPATH:$PWD
+python train_prune.py --backbone mv --neck gdf --nd False --phi S2 --lr_init 0.01 --lr_decay cos --data_root '/PATH/TO/WaterScenes_new' --bs 32 --pm 0.3 --pa '[erk/uniform/mmu]' --log_dir plogs/01
+```
+
+3. Pruning only radar
+
+``` bash
+export PYTHONPATH=$PYTHONPATH:$PWD
+python train_prune_only_radar.py --backbone mv --neck gdf --nd False --phi S2 --lr_init 0.01 --lr_decay cos --data_root '/PATH/TO/WaterScenes_new' --bs 32 --pm 0.5 --log_dir plogs/02
+```
+
+## Energy Evaluation
+1. Install ***UniP***:
+
+``` bash
+pip install git+https://github.com/Nobreakfast/UniP@dev
+```
+
+2. Run the scripts ***Achelous_energy_fps.sh***:
+
+``` bash
+sh Achelous_energy_fps.sh
+```
+
+---
+# Achelous
 
 <div  align="center">    
   <img src="icons/Achelous.png" width = "300" height = "300" alt="Achelous" align=center />
@@ -185,16 +222,6 @@ mIoU-pc: mIoU of point clouds
 1. Change configrations in achelous.py
 2. See annotations in predict.py and run (including prediction, export, heatmap visualization and export onnx)
 ---
-
-### Energy Evaluation
-1. Install ***UniP***:
-``` bash
-pip install git+https://github.com/Nobreakfast/UniP@dev
-```
-2. Run the scripts ***Achelous_energy_fps.sh***:
-``` bash
-sh Achelous_energy_fps.sh
-```
 
 ## Acknowledgement
 https://github.com/bubbliiiing
