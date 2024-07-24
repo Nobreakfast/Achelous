@@ -3,6 +3,9 @@
 */.DS_Store
 logs*/
 plogs*/
+outputs*/*
+1669622879.55624_0.5/*
+1669623101.92798_0.5/*
 #exp*
 .temp_miou_out/
 .temp_map_out/
